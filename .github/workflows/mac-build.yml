@@ -48,24 +48,22 @@ jobs:
         run: |
           APP_NAME='SPARK'
           VERSION='${{ github.ref_name }}'
-          ZIP_NAME="${APP_NAME}-mac-${VERSION}.zip"
 
-          APP_PATH="$(find src-tauri/target \
-            -path '*/release/bundle/macos/*.app' \
-            -print -quit)"
+          DMG_PATH="$(find src-tauri/target/release/bundle/dmg \
+            -maxdepth 1 -name '*.dmg' -print -quit)"
 
-          if [ -z "$APP_PATH" ]; then
-            echo '❌ .app not found'
+          if [ -z "$DMG_PATH" ]; then
+            echo '❌ .dmg not found'
             exit 1
           fi
 
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$APP_PATH" "$ZIP_NAME"
-
-          echo "✅ Created $ZIP_NAME"
+          DMG_NAME="${APP_NAME}-mac-${VERSION}.dmg"
+          cp "$DMG_PATH" "$DMG_NAME"
+          echo "✅ Created $DMG_NAME"
 
       - name: Upload to GitHub Release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            SPARK-mac-${{ github.ref_name }}.zip
+            SPARK-mac-${{ github.ref_name }}.dmg
+
