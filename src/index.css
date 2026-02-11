@@ -1,6 +1,7 @@
 /* tailwind css */
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import "shadcn/tailwind.css";
 
 /* custom scroll */
 *::-webkit-scrollbar {
@@ -20,4 +21,17 @@
 
 *::-webkit-scrollbar-thumb:hover {
     background-color: #525870;
+}
+
+@theme {
+    --color-main: #171923;
+    --color-primary: #5865f2;
+
+    --color-panel: #1f222d;
+    --color-accent: #a075ff;
+    --color-line: #2e353f;
+    --color-muted: #c3c9d1;
+    --color-secondary: #2a2d38;
+    --color-lightline: #ffffff33;
+    --color-destructive: #E93A4B
 }

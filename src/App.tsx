@@ -1,162 +1,122 @@
 import { useMemo } from 'react'
-import { useSpark } from '@/hooks/useSpark'
+import { Plug2, PlugZap, Rss } from 'lucide-react'
 
-type PingQuality = 'good' | 'ok' | 'bad' | 'na'
+import { useSparkTokens } from '@/hooks/useSparkTokens'
+import { TokenRow } from '@/components/TokenRow'
+
+type PingQuality = 'excellent' | 'good' | 'meh' | 'bad' | 'na'
 
 function getQuality(pingMs: number | null): PingQuality {
     if (pingMs === null) return 'na'
-    if (pingMs <= 80) return 'good'
-    if (pingMs <= 200) return 'ok'
+    if (pingMs <= 50) return 'excellent'
+    if (pingMs <= 200) return 'good'
+    if (pingMs <= 350) return 'meh'
     return 'bad'
 }
 
-function StatusBadge({ status }: { status: string }) {
-    const cls =
-        status === 'open'
-            ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
-            : status === 'connecting'
-              ? 'bg-yellow-500/15 text-yellow-300 ring-yellow-500/30'
-              : status === 'error'
-                ? 'bg-red-500/15 text-red-300 ring-red-500/30'
-                : 'bg-zinc-500/15 text-zinc-300 ring-zinc-500/30'
-
-    return (
-        <span
-            className={[
-                'inline-flex items-center rounded-full px-3 py-1 text-xs',
-                'font-medium ring-1',
-                cls
-            ].join(' ')}
-        >
-            🔌 {status}
-        </span>
-    )
-}
-
-function PingBadge({ pingMs }: { pingMs: number | null }) {
+function ConnPill({
+    status,
+    pingMs
+}: {
+    status: string
+    pingMs: number | null
+}) {
     const quality = useMemo(() => getQuality(pingMs), [pingMs])
 
-    const cls =
-        quality === 'good'
-            ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
-            : quality === 'ok'
-              ? 'bg-yellow-500/15 text-yellow-300 ring-yellow-500/30'
-              : quality === 'bad'
-                ? 'bg-red-500/15 text-red-300 ring-red-500/30'
-                : 'bg-zinc-500/15 text-zinc-300 ring-zinc-500/30'
+    if (status !== 'open') {
+        const cls =
+            status === 'connecting'
+                ? 'bg-yellow-400/15 text-yellow-200 ring-yellow-400/20'
+                : 'bg-red-400/15 text-red-200 ring-red-400/20'
 
-    const dot =
-        quality === 'good'
-            ? 'bg-emerald-400'
-            : quality === 'ok'
-              ? 'bg-yellow-400'
-              : quality === 'bad'
-                ? 'bg-red-400'
-                : 'bg-zinc-400'
+        const Icon = status === 'connecting' ? PlugZap : Plug2
+        const label = status === 'connecting' ? 'Connecting…' : 'Disconnected'
+
+        return (
+            <span
+                className={[
+                    'inline-flex items-center gap-2 rounded-md px-3 py-1 text-xs',
+                    'font-medium ring-1 whitespace-nowrap',
+                    cls
+                ].join(' ')}
+            >
+                <Icon className='h-4 w-4 opacity-90' />
+                {label}
+            </span>
+        )
+    }
+
+    const cls =
+        quality === 'excellent'
+            ? 'bg-green-400/15 text-green-200 ring-green-400/30'
+            : quality === 'good'
+              ? 'bg-green-400/15 text-green-200 ring-green-400/20'
+              : quality === 'meh'
+                ? 'bg-yellow-400/15 text-yellow-200 ring-yellow-400/20'
+                : quality === 'bad'
+                  ? 'bg-red-400/15 text-red-200 ring-red-400/20'
+                  : 'bg-white/10 text-zinc-200 ring-white/15'
 
     const label =
-        quality === 'good'
-            ? 'Good'
-            : quality === 'ok'
-              ? 'Ok'
-              : quality === 'bad'
-                ? 'Bad'
-                : '—'
+        quality === 'excellent'
+            ? 'Excellent'
+            : quality === 'good'
+              ? 'Good'
+              : quality === 'meh'
+                ? 'Meh'
+                : quality === 'bad'
+                  ? 'Bad'
+                  : '—'
 
     return (
         <span
             className={[
-                'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs',
-                'font-medium ring-1',
+                'inline-flex items-center gap-2 rounded-md px-3 py-1 text-xs',
+                'font-medium ring-1 whitespace-nowrap',
                 cls
             ].join(' ')}
-            title='RTT measured on client: ping recv → pong_ack recv'
+            title='RTT: ping recv → pong_ack recv'
         >
-            <span className={['h-2 w-2 rounded-full', dot].join(' ')} />
-            📶 Ping
-            <span className='font-semibold tabular-nums'>
-                {pingMs ?? '—'} ms
-            </span>
-            <span className='text-[11px] opacity-80'>{label}</span>
+            <Rss className='h-4 w-4 opacity-90' />
+            {pingMs ?? '—'} ms <span className='opacity-80'>{label}</span>
         </span>
     )
 }
 
-function App() {
-    const { status, pingMs, lastMsgStr, log, clearLog } = useSpark()
+export default function App() {
+    const { status, pingMs, tokens, totalProcessed, clearTokens } =
+        useSparkTokens()
 
     return (
-        <div className='min-h-screen bg-zinc-950 text-zinc-100'>
-            <div className='mx-auto max-w-5xl p-6'>
-                <div className='flex flex-wrap items-center gap-3'>
-                    <div className='text-lg font-semibold tracking-tight'>
-                        spark
-                    </div>
+        <div className='min-h-screen bg-main text-zinc-100'>
+            <div className='mx-auto w-full max-w-115 p-4'>
+                <div className='flex items-center gap-2'>
+                    <ConnPill status={status} pingMs={pingMs} />
 
-                    <StatusBadge status={status} />
-                    <PingBadge pingMs={pingMs} />
+                    <div className='ml-auto flex items-center gap-3 text-xs text-zinc-300'>
+                        <span title='Total processed tokens'>
+                            🧾 {totalProcessed}
+                        </span>
 
-                    <button
-                        onClick={clearLog}
-                        className={[
-                            'ml-auto rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium',
-                            'ring-1 ring-zinc-800 hover:bg-zinc-800'
-                        ].join(' ')}
-                    >
-                        Clear log
-                    </button>
-                </div>
-
-                <div className='mt-6 grid gap-4 lg:grid-cols-2'>
-                    <div className='rounded-2xl bg-zinc-900/40 ring-1 ring-zinc-800'>
-                        <div className='px-4 py-3 text-sm font-semibold'>
-                            📨 last message
-                        </div>
-                        <pre className='max-h-90 overflow-auto px-4 pb-4 text-xs leading-relaxed'>
-                            <code className='whitespace-pre-wrap wrap-break-word'>
-                                {lastMsgStr}
-                            </code>
-                        </pre>
-                    </div>
-
-                    <div className='rounded-2xl bg-zinc-900/40 ring-1 ring-zinc-800'>
-                        <div className='flex items-center justify-between px-4 py-3'>
-                            <div className='text-sm font-semibold'>
-                                🗂️ last {log.length} messages
-                            </div>
-                            <div className='text-xs text-zinc-400'>max 30</div>
-                        </div>
-
-                        <div className='max-h-90 overflow-auto px-4 pb-4'>
-                            <div className='space-y-2'>
-                                {log.length ? (
-                                    log.map((s, i) => (
-                                        <div
-                                            key={i}
-                                            className='rounded-xl bg-zinc-950/50 p-3 text-xs ring-1 ring-zinc-800'
-                                        >
-                                            <code className='whitespace-pre-wrap wrap-break-word'>
-                                                {s}
-                                            </code>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className='text-sm text-zinc-400'>
-                                        —
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        <button
+                            onClick={clearTokens}
+                            className='rounded-md bg-white/10 px-3 py-1 text-xs ring-1 ring-white/10 hover:bg-white/15'
+                        >
+                            Clear
+                        </button>
                     </div>
                 </div>
 
-                <div className='mt-4 text-xs text-zinc-500'>
-                    Ping — RTT по клиенту (полностью в миллисекундах): получение
-                    ping → получение pong_ack.
+                <div className='mt-3 space-y-2'>
+                    {tokens.length ? (
+                        tokens.map(item => <TokenRow key={item.id} item={item} />)
+                    ) : (
+                        <div className='rounded-xl bg-white/5 p-4 text-sm text-zinc-400 ring-1 ring-white/10'>
+                            — waiting for tokens…
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
     )
 }
-
-export default App
