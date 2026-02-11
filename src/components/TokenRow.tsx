@@ -44,14 +44,11 @@ const PROTOCOLS: Record<
     }
 }
 
-
 export function TokenRow({ item }: { item: TokenCardModel }) {
     const { token, metadata, metaStatus } = item
 
     const rawTicker = metadata?.ticker || token.ticker || ''
-    const ticker = rawTicker.trim()
-        ? rawTicker.toUpperCase()
-        : 'N/A'
+    const ticker = rawTicker.trim() ? rawTicker.toUpperCase() : 'N/A'
 
     const name = metadata?.name || token.name
     const avatarUrl = metadata?.image_url ? safeUrl(metadata.image_url) : ''
@@ -75,15 +72,10 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
 
     const isMayhem = token.is_mayhem_mode === true
 
-    const protoIcon =
-        protocol === 'pump' && isMayhem
-            ? mayhemIcon
-            : proto?.icon
+    const protoIcon = protocol === 'pump' && isMayhem ? mayhemIcon : proto?.icon
 
     const protoTitle =
-        protocol === 'pump' && isMayhem
-            ? 'pump.fun (mayhem)'
-            : proto?.title
+        protocol === 'pump' && isMayhem ? 'pump.fun (mayhem)' : proto?.title
 
     const onCopyAddress = async () => {
         try {
@@ -123,20 +115,52 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
             ].join(' ')}
         >
             <div className='flex items-start gap-3'>
-                <Avatar className='h-10 w-10 rounded-lg'>
-                    <AvatarImage
-                        src={avatarUrl}
-                        className='rounded-lg object-cover'
-                    />
-                    <AvatarFallback className='rounded-lg bg-white/5 text-xs'>
-                        {ticker.slice(0, 2) || '??'}
-                    </AvatarFallback>
-                </Avatar>
+                {/* avatar with hover preview */}
+                <div className='relative group'>
+                    <Avatar className='h-10 w-10 rounded-lg'>
+                        <AvatarImage
+                            src={avatarUrl}
+                            className='rounded-lg object-cover'
+                        />
+                        <AvatarFallback className='rounded-lg bg-white/5 text-xs'>
+                            {ticker.slice(0, 2) || '??'}
+                        </AvatarFallback>
+                    </Avatar>
+
+                    {avatarUrl && (
+                        <div
+                            className={[
+                                'pointer-events-none',
+                                'absolute left-0 top-0 z-50',
+                                'opacity-0 scale-95',
+                                'group-hover:opacity-100 group-hover:scale-100',
+                                'transition duration-150 ease-out',
+                                '-translate-y-1 -translate-x-1',
+                                'origin-top-left'
+                            ].join(' ')}
+                        >
+                            <div
+                                className={[
+                                    'h-40 w-40 rounded-xl overflow-hidden',
+                                    'ring-1 ring-white/15',
+                                    'bg-zinc-950/60 backdrop-blur'
+                                ].join(' ')}
+                            >
+                                <img
+                                    src={avatarUrl}
+                                    alt={ticker}
+                                    className='h-full w-full object-cover'
+                                    draggable={false}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 <div className='min-w-0 flex-1'>
                     <div className='min-w-0 flex-1 truncate text-sm font-semibold'>
                         {ticker}{' '}
-                            <button
+                        <button
                             type='button'
                             onClick={onCopyAddress}
                             className={[
@@ -150,7 +174,6 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                         </button>
                     </div>
 
-                    {/* icons row: socials -> json -> meta status (one row) */}
                     <div className='mt-1 flex items-center gap-2 text-zinc-400'>
                         {proto && (
                             <a
@@ -218,7 +241,9 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                             <MetaIcon
                                 className={[
                                     'h-4 w-4',
-                                    metaStatus === 'loading' ? 'animate-spin' : '',
+                                    metaStatus === 'loading'
+                                        ? 'animate-spin'
+                                        : '',
                                     metaCls
                                 ].join(' ')}
                             />
@@ -238,7 +263,6 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                             DEV {token.devhold}%
                         </Badge>
                     </div>
-
                 </div>
             </div>
         </div>

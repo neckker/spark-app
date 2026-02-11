@@ -39,6 +39,9 @@ const HTTP_BASE = 'http://127.0.0.1:5000'
 const MAX_TOKENS = 10
 const META_TIMEOUT_MS = 3000
 
+const META_RETRY_ATTEMPTS = 2
+const META_RETRY_DELAY_MS = 1500
+
 const PRICE_PATH = '/hub/price'
 const PRICE_POLL_MS = 30_000
 
@@ -168,7 +171,11 @@ export function useSparkTokens() {
         }, PRICE_POLL_MS)
     }
 
-    const fetchMetadata = async (tokenId: string, metadataUrl: string) => {
+    const fetchMetadata = async (
+        tokenId: string,
+        metadataUrl: string,
+        attempt = 0
+    ) => {
         const prev = metaInflightRef.current.get(tokenId)
         prev?.abort()
 
@@ -181,6 +188,21 @@ export function useSparkTokens() {
             )
         )
 
+        const retryLater = async () => {
+            if (attempt >= META_RETRY_ATTEMPTS) return false
+
+            await new Promise<void>(r =>
+                window.setTimeout(() => r(), META_RETRY_DELAY_MS)
+            )
+
+            // если запрос уже отменили/заменили — не продолжаем
+            if (ctrl.signal.aborted) return false
+            if (metaInflightRef.current.get(tokenId) !== ctrl) return false
+
+            void fetchMetadata(tokenId, metadataUrl, attempt + 1)
+            return true
+        }
+
         try {
             const res = await http.get('/hub/meta', {
                 signal: ctrl.signal,
@@ -189,7 +211,12 @@ export function useSparkTokens() {
 
             const data = res.data
 
+            // ключевой кейс: бэк вернул { ok: false } -> мета ещё не готова
             if (data && typeof data === 'object' && data.ok === false) {
+                const scheduled = await retryLater()
+                if (scheduled) return
+
+                // ретраи закончились -> фиксируем error
                 setTokens(prevTokens =>
                     prevTokens.map(x =>
                         x.id === tokenId
@@ -206,14 +233,15 @@ export function useSparkTokens() {
                 prevTokens.map(x =>
                     x.id === tokenId
                         ? {
-                              ...x,
-                              metadata: meta,
-                              metaStatus: meta ? 'ready' : 'error'
-                          }
+                            ...x,
+                            metadata: meta,
+                            metaStatus: meta ? 'ready' : 'error'
+                        }
                         : x
                 )
             )
         } catch {
+            // оставляем твоё поведение для реальных ошибок сети/таймаута
             setTokens(prevTokens =>
                 prevTokens.map(x =>
                     x.id === tokenId
