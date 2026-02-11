@@ -36,7 +36,7 @@ type WsMessage = Record<string, unknown>
 const WS_URL = 'ws://127.0.0.1:8000/hub/ws'
 const HTTP_BASE = 'http://127.0.0.1:5000'
 
-const MAX_TOKENS = 11
+const MAX_TOKENS = 10
 const META_TIMEOUT_MS = 3000
 
 const PRICE_PATH = '/hub/price'

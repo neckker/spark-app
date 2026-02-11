@@ -198,7 +198,7 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                                 href={links.telegram}
                                 target='_blank'
                                 rel='noreferrer'
-                                className='text-sky-400 hover:text-sky-300 transition-colors'
+                                className={iconLinkCls}
                                 title={links.telegram}
                             >
                                 <Send className='h-4 w-4' />

@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
+
+import SettingsDialog from '@/components/SettingsDialog'
 import { Bolt, Hash, Rss, Settings2, Trash2 } from 'lucide-react'
 
 type PingQuality = 'excellent' | 'good' | 'meh' | 'bad' | 'na'
@@ -150,12 +152,7 @@ export default function Header({
             ? `$${fmtUsd(solPriceUsd)}`
             : solPriceStatus === 'loading'
               ? '…'
-              : '—'
-
-    const onSettings = () => {
-        // TODO: в будущем откроешь реальное меню/модалку
-        console.log('settings: coming soon')
-    }
+              : '0.00'
 
     return (
         <div className='flex items-center gap-2'>
@@ -187,11 +184,13 @@ export default function Header({
             <div className='ml-auto flex items-center gap-2'>
                 <TelegramBtn />
 
-                <IconBtn
-                    icon={Settings2}
-                    label='Settings'
-                    onClick={onSettings}
-                />
+                <SettingsDialog>
+                    <IconBtn
+                        icon={Settings2}
+                        label='Settings'
+                        onClick={() => {}}
+                    />
+                </SettingsDialog>
 
                 <IconBtn icon={Trash2} label='Clear' onClick={onClear} />
             </div>
