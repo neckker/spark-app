@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import toast from 'react-hot-toast'
+import { Badge } from '@/components/ui/badge'
 
 import pumpIcon from '@/assets/pump.svg'
 import mayhemIcon from '@/assets/mayhem.svg'
@@ -9,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
     CheckCircle2,
     CircleDashed,
-    // FileJson2,
+    Search,
     Globe,
     Send,
     TriangleAlert,
@@ -24,15 +26,6 @@ function safeUrl(u: string) {
     } catch {
         return ''
     }
-}
-
-function fmtDevhold(v: number) {
-    if (!Number.isFinite(v)) return '—'
-    const s = v
-        .toFixed(v < 10 ? 2 : 1)
-        .replace(/\.00$/, '')
-        .replace(/(\.\d)0$/, '$1')
-    return `${s}%`
 }
 
 const PROTOCOLS: Record<
@@ -54,7 +47,6 @@ const PROTOCOLS: Record<
 
 export function TokenRow({ item }: { item: TokenCardModel }) {
     const { token, metadata, metaStatus } = item
-    const [copied, setCopied] = useState(false)
 
     const rawTicker = metadata?.ticker || token.ticker || ''
     const ticker = rawTicker.trim()
@@ -96,10 +88,9 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
     const onCopyAddress = async () => {
         try {
             await navigator.clipboard.writeText(token.address)
-            setCopied(true)
-            window.setTimeout(() => setCopied(false), 700)
+            toast.success('Address successfully copied', { icon: '📋' })
         } catch {
-            // ignore
+            toast.error('Failed to copy address')
         }
     }
 
@@ -143,27 +134,20 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                 </Avatar>
 
                 <div className='min-w-0 flex-1'>
-                    {/* top row: title + devhold */}
-                    <div className='flex items-start gap-2'>
-                        <div className='min-w-0 flex-1 truncate text-sm font-semibold'>
-                            {ticker}{' '}
+                    <div className='min-w-0 flex-1 truncate text-sm font-semibold'>
+                        {ticker}{' '}
                             <button
-                                type='button'
-                                onClick={onCopyAddress}
-                                className={[
-                                    'font-normal text-muted',
-                                    'hover:text-muted/80 transition-colors',
-                                    'cursor-pointer'
-                                ].join(' ')}
-                                title='Click name to copy address'
-                            >
-                                {copied ? '✅ copied' : name}
-                            </button>
-                        </div>
-
-                        <div className='shrink-0 text-[11px] tabular-nums text-zinc-300'>
-                            🧪 {fmtDevhold(token.devhold)}
-                        </div>
+                            type='button'
+                            onClick={onCopyAddress}
+                            className={[
+                                'font-normal text-muted',
+                                'hover:text-muted/80 transition-colors',
+                                'cursor-pointer'
+                            ].join(' ')}
+                            title='Click name to copy address'
+                        >
+                            {name}
+                        </button>
                     </div>
 
                     {/* icons row: socials -> json -> meta status (one row) */}
@@ -190,8 +174,8 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                                 href={links.twitter}
                                 target='_blank'
                                 rel='noreferrer'
-                                className={iconLinkCls}
-                                title='Twitter'
+                                className='text-[#5dbcff] hover:text-[#5dbcff]/80 transition-colors'
+                                title={links.twitter}
                             >
                                 <Twitter className='h-4 w-4' />
                             </a>
@@ -203,7 +187,7 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                                 target='_blank'
                                 rel='noreferrer'
                                 className={iconLinkCls}
-                                title='Website'
+                                title={links.website}
                             >
                                 <Globe className='h-4 w-4' />
                             </a>
@@ -214,24 +198,21 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                                 href={links.telegram}
                                 target='_blank'
                                 rel='noreferrer'
-                                className={iconLinkCls}
-                                title='Telegram'
+                                className='text-sky-400 hover:text-sky-300 transition-colors'
+                                title={links.telegram}
                             >
                                 <Send className='h-4 w-4' />
                             </a>
                         )}
 
-                        {/* {links.json && (
-                            <a
-                                href={links.json}
-                                target='_blank'
-                                rel='noreferrer'
-                                className={iconLinkCls}
-                                title='Metadata JSON'
-                            >
-                                <FileJson2 className='h-4 w-4' />
-                            </a>
-                        )} */}
+                        <a
+                            href={`https://x.com/search?q=${token.address}&src=typed_query&f=live`}
+                            target='_blank'
+                            rel='noreferrer'
+                            className={iconLinkCls}
+                        >
+                            <Search className='h-4 w-4' />
+                        </a>
 
                         {MetaIcon && (
                             <MetaIcon
@@ -242,6 +223,20 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                                 ].join(' ')}
                             />
                         )}
+
+                        <Badge
+                            variant='secondary'
+                            className={[
+                                'ml-1',
+                                'h-5 px-2',
+                                'text-[11px] tabular-nums',
+                                'bg-zinc-900/70 text-zinc-200',
+                                'ring-1 ring-white/10'
+                            ].join(' ')}
+                            title='Dev hold'
+                        >
+                            DEV {token.devhold}%
+                        </Badge>
                     </div>
 
                 </div>

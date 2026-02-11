@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 
 type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
+type PriceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type TokenEvent = {
     address: string
@@ -34,10 +35,12 @@ type WsMessage = Record<string, unknown>
 
 const WS_URL = 'ws://127.0.0.1:8000/hub/ws'
 const HTTP_BASE = 'http://127.0.0.1:5000'
-const META_PROXY = `${HTTP_BASE}/hub/meta`
 
-const MAX_TOKENS = 10
+const MAX_TOKENS = 11
 const META_TIMEOUT_MS = 3000
+
+const PRICE_PATH = '/hub/price'
+const PRICE_POLL_MS = 30_000
 
 const http = axios.create({
     baseURL: HTTP_BASE,
@@ -98,11 +101,17 @@ export function useSparkTokens() {
     const metaInflightRef = useRef<Map<string, AbortController>>(new Map())
     const totalProcessedRef = useRef<number>(0)
 
+    const priceTimerRef = useRef<number | null>(null)
+    const priceAbortRef = useRef<AbortController | null>(null)
+
     const [status, setStatus] = useState<WsStatus>('connecting')
     const [pingMs, setPingMs] = useState<number | null>(null)
 
     const [tokens, setTokens] = useState<TokenCardModel[]>([])
     const [totalProcessed, setTotalProcessed] = useState<number>(0)
+
+    const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null)
+    const [solPriceStatus, setSolPriceStatus] = useState<PriceStatus>('idle')
 
     const clearReconnect = () => {
         if (reconnectRef.current !== null) {
@@ -114,6 +123,49 @@ export function useSparkTokens() {
     const stopAllMeta = () => {
         for (const c of metaInflightRef.current.values()) c.abort()
         metaInflightRef.current.clear()
+    }
+
+    const stopPricePolling = () => {
+        if (priceTimerRef.current !== null) {
+            window.clearInterval(priceTimerRef.current)
+            priceTimerRef.current = null
+        }
+        priceAbortRef.current?.abort()
+        priceAbortRef.current = null
+    }
+
+    const fetchSolPrice = async (silent = false) => {
+        priceAbortRef.current?.abort()
+        const ctrl = new AbortController()
+        priceAbortRef.current = ctrl
+
+        if (!silent) setSolPriceStatus('loading')
+
+        try {
+            const res = await http.get(PRICE_PATH, { signal: ctrl.signal })
+            const data = res.data as { ok?: boolean; price?: number }
+
+            if (!data || data.ok !== true || typeof data.price !== 'number') {
+                setSolPriceStatus('error')
+                return
+            }
+
+            setSolPriceUsd(data.price)
+            setSolPriceStatus('ready')
+        } catch {
+            setSolPriceStatus('error')
+        } finally {
+            if (priceAbortRef.current === ctrl) priceAbortRef.current = null
+        }
+    }
+
+    const startPricePolling = () => {
+        stopPricePolling()
+        void fetchSolPrice(false)
+
+        priceTimerRef.current = window.setInterval(() => {
+            void fetchSolPrice(true)
+        }, PRICE_POLL_MS)
     }
 
     const fetchMetadata = async (tokenId: string, metadataUrl: string) => {
@@ -130,14 +182,13 @@ export function useSparkTokens() {
         )
 
         try {
-            const res = await http.get(META_PROXY.replace(HTTP_BASE, ''), {
+            const res = await http.get('/hub/meta', {
                 signal: ctrl.signal,
                 params: { url: metadataUrl }
             })
 
             const data = res.data
 
-            // твой бекенд: { ok: false }
             if (data && typeof data === 'object' && data.ok === false) {
                 setTokens(prevTokens =>
                     prevTokens.map(x =>
@@ -254,10 +305,12 @@ export function useSparkTokens() {
 
     useEffect(() => {
         connect(0)
+        startPricePolling()
 
         return () => {
             clearReconnect()
             stopAllMeta()
+            stopPricePolling()
             wsRef.current?.close()
             wsRef.current = null
         }
@@ -269,6 +322,8 @@ export function useSparkTokens() {
         pingMs,
         tokens,
         totalProcessed,
-        clearTokens: () => setTokens([])
+        clearTokens: () => setTokens([]),
+        solPriceUsd,
+        solPriceStatus
     }
 }

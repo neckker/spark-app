@@ -22,6 +22,8 @@ const Toaster: React.FC<ToasterProps> = ({ maxCount = 3 }) => {
             toastOptions={{
                 duration: 3000,
                 style: {
+                    minHeight: '24px',
+                    padding: '6px 10px',
                     background: '#292c3a',
                     color: '#fff',
                     border: '1px solid #3c434d',
