@@ -48,7 +48,7 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
     const { token, metadata, metaStatus } = item
 
     const rawTicker = metadata?.ticker || token.ticker || ''
-    const ticker = rawTicker.trim() ? rawTicker.toUpperCase() : 'N/A'
+    const ticker = rawTicker.trim() ? rawTicker.toUpperCase() : 'NA'
 
     const name = metadata?.name || token.name
     const avatarUrl = metadata?.image_url ? safeUrl(metadata.image_url) : ''

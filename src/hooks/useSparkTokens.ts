@@ -37,9 +37,10 @@ const WS_URL = 'ws://127.0.0.1:8000/hub/ws'
 const HTTP_BASE = 'http://127.0.0.1:5000'
 
 const MAX_TOKENS = 10
-const META_TIMEOUT_MS = 3000
+const META_TIMEOUT_MS = 1500
 
-const META_RETRY_ATTEMPTS = 2
+// Максимум дополнительных попыток после {ok: false} или таймаута
+const META_RETRY_ATTEMPTS = 5
 const META_RETRY_DELAY_MS = 1500
 
 const PRICE_PATH = '/hub/price'
@@ -101,7 +102,11 @@ export function useSparkTokens() {
     const reconnectRef = useRef<number | null>(null)
     const lastPingRecvRef = useRef<number | null>(null)
 
+    // key: tokenId → AbortController текущего HTTP-запроса
     const metaInflightRef = useRef<Map<string, AbortController>>(new Map())
+    // key: tokenId → id таймера ожидания следующего retry
+    const metaRetryTimersRef = useRef<Map<string, number>>(new Map())
+
     const totalProcessedRef = useRef<number>(0)
 
     const priceTimerRef = useRef<number | null>(null)
@@ -116,6 +121,8 @@ export function useSparkTokens() {
     const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null)
     const [solPriceStatus, setSolPriceStatus] = useState<PriceStatus>('idle')
 
+    // --- helpers ---
+
     const clearReconnect = () => {
         if (reconnectRef.current !== null) {
             window.clearTimeout(reconnectRef.current)
@@ -123,9 +130,20 @@ export function useSparkTokens() {
         }
     }
 
+    /** Отменить всё in-flight для конкретного токена (запрос + таймер retry) */
+    const cancelMeta = (tokenId: string) => {
+        metaInflightRef.current.get(tokenId)?.abort()
+        metaInflightRef.current.delete(tokenId)
+
+        const timer = metaRetryTimersRef.current.get(tokenId)
+        if (timer !== undefined) {
+            window.clearTimeout(timer)
+            metaRetryTimersRef.current.delete(tokenId)
+        }
+    }
+
     const stopAllMeta = () => {
-        for (const c of metaInflightRef.current.values()) c.abort()
-        metaInflightRef.current.clear()
+        for (const id of [...metaInflightRef.current.keys()]) cancelMeta(id)
     }
 
     const stopPricePolling = () => {
@@ -136,6 +154,8 @@ export function useSparkTokens() {
         priceAbortRef.current?.abort()
         priceAbortRef.current = null
     }
+
+    // --- sol price ---
 
     const fetchSolPrice = async (silent = false) => {
         priceAbortRef.current?.abort()
@@ -171,89 +191,122 @@ export function useSparkTokens() {
         }, PRICE_POLL_MS)
     }
 
-    const fetchMetadata = async (
+    // --- metadata ---
+
+    /**
+     * Выполняет ОДИН HTTP-запрос за метаданными токена.
+     * Если сервер вернул {ok: false} и остались попытки — планирует
+     * следующую попытку через setTimeout (fire-and-forget, не блокирует ничего).
+     * Если запрос успешен или попытки исчерпаны — обновляет состояние.
+     */
+    const attemptMeta = (
         tokenId: string,
         metadataUrl: string,
-        attempt = 0
+        attemptsLeft: number
     ) => {
-        const prev = metaInflightRef.current.get(tokenId)
-        prev?.abort()
+        // Чистим предыдущий таймер retry для этого токена (если был)
+        const prevTimer = metaRetryTimersRef.current.get(tokenId)
+        if (prevTimer !== undefined) {
+            window.clearTimeout(prevTimer)
+            metaRetryTimersRef.current.delete(tokenId)
+        }
+
+        // Отменяем предыдущий HTTP-запрос для этого токена
+        metaInflightRef.current.get(tokenId)?.abort()
 
         const ctrl = new AbortController()
         metaInflightRef.current.set(tokenId, ctrl)
 
-        setTokens(prevTokens =>
-            prevTokens.map(x =>
-                x.id === tokenId ? { ...x, metaStatus: 'loading' } : x
-            )
-        )
-
-        const retryLater = async () => {
-            if (attempt >= META_RETRY_ATTEMPTS) return false
-
-            await new Promise<void>(r =>
-                window.setTimeout(() => r(), META_RETRY_DELAY_MS)
-            )
-
-            // если запрос уже отменили/заменили — не продолжаем
-            if (ctrl.signal.aborted) return false
-            if (metaInflightRef.current.get(tokenId) !== ctrl) return false
-
-            void fetchMetadata(tokenId, metadataUrl, attempt + 1)
-            return true
-        }
-
-        try {
-            const res = await http.get('/hub/meta', {
+        http
+            .get('/hub/meta', {
                 signal: ctrl.signal,
                 params: { url: metadataUrl }
             })
+            .then(res => {
+                if (ctrl.signal.aborted) return
 
-            const data = res.data
+                const data = res.data
 
-            // ключевой кейс: бэк вернул { ok: false } -> мета ещё не готова
-            if (data && typeof data === 'object' && data.ok === false) {
-                const scheduled = await retryLater()
-                if (scheduled) return
+                // Сервер ещё не готов → планируем retry не блокируя поток
+                if (data && typeof data === 'object' && data.ok === false) {
+                    if (attemptsLeft > 0) {
+                        const timer = window.setTimeout(() => {
+                            metaRetryTimersRef.current.delete(tokenId)
+                            attemptMeta(tokenId, metadataUrl, attemptsLeft - 1)
+                        }, META_RETRY_DELAY_MS)
 
-                // ретраи закончились -> фиксируем error
-                setTokens(prevTokens =>
-                    prevTokens.map(x =>
+                        metaRetryTimersRef.current.set(tokenId, timer)
+                    } else {
+                        // Все попытки исчерпаны
+                        setTokens(prev =>
+                            prev.map(x =>
+                                x.id === tokenId
+                                    ? { ...x, metadata: null, metaStatus: 'error' }
+                                    : x
+                            )
+                        )
+                        metaInflightRef.current.delete(tokenId)
+                    }
+                    return
+                }
+
+                // Успех
+                const meta = normalizeMetadata(data)
+                setTokens(prev =>
+                    prev.map(x =>
+                        x.id === tokenId
+                            ? {
+                                  ...x,
+                                  metadata: meta,
+                                  metaStatus: meta ? 'ready' : 'error'
+                              }
+                            : x
+                    )
+                )
+                metaInflightRef.current.delete(tokenId)
+            })
+            .catch((err: any) => {
+                const aborted =
+                    err?.name === 'CanceledError' ||
+                    err?.code === 'ERR_CANCELED' ||
+                    ctrl.signal.aborted
+
+                if (aborted) return
+
+                // Таймаут или сетевая ошибка — пробуем retry если попытки остались
+                const isRetryable =
+                    err?.code === 'ECONNABORTED' ||
+                    err?.code === 'ERR_NETWORK' ||
+                    err?.message === 'Network Error'
+
+                if (isRetryable && attemptsLeft > 0) {
+                    const timer = window.setTimeout(() => {
+                        metaRetryTimersRef.current.delete(tokenId)
+                        attemptMeta(tokenId, metadataUrl, attemptsLeft - 1)
+                    }, META_RETRY_DELAY_MS)
+
+                    metaRetryTimersRef.current.set(tokenId, timer)
+                    return
+                }
+
+                setTokens(prev =>
+                    prev.map(x =>
                         x.id === tokenId
                             ? { ...x, metadata: null, metaStatus: 'error' }
                             : x
                     )
                 )
-                return
-            }
-
-            const meta = normalizeMetadata(data)
-
-            setTokens(prevTokens =>
-                prevTokens.map(x =>
-                    x.id === tokenId
-                        ? {
-                            ...x,
-                            metadata: meta,
-                            metaStatus: meta ? 'ready' : 'error'
-                        }
-                        : x
-                )
-            )
-        } catch {
-            // оставляем твоё поведение для реальных ошибок сети/таймаута
-            setTokens(prevTokens =>
-                prevTokens.map(x =>
-                    x.id === tokenId
-                        ? { ...x, metadata: null, metaStatus: 'error' }
-                        : x
-                )
-            )
-        } finally {
-            const current = metaInflightRef.current.get(tokenId)
-            if (current === ctrl) metaInflightRef.current.delete(tokenId)
-        }
+                metaInflightRef.current.delete(tokenId)
+            })
     }
+
+    /** Публичная точка входа: запускает первую попытку + резервирует retry-слоты */
+    const fetchMetadata = (tokenId: string, metadataUrl: string) => {
+        // +1 — сама первая попытка, META_RETRY_ATTEMPTS — дополнительные
+        attemptMeta(tokenId, metadataUrl, META_RETRY_ATTEMPTS)
+    }
+
+    // --- WebSocket ---
 
     const connect = (attempt = 0) => {
         clearReconnect()
@@ -317,19 +370,26 @@ export function useSparkTokens() {
                     id,
                     token: msg,
                     metadata: null,
+                    // Сразу 'loading' если есть URL — иначе React батчит
+                    // этот вызов и setTokens('loading') из attemptMeta
+                    // в один рендер, и 'idle' перезаписывает 'loading'
                     metaStatus:
                         msg.metadata_url && msg.metadata_url.length
-                            ? 'idle'
+                            ? 'loading'
                             : 'error'
                 }
                 return [item, ...rest].slice(0, MAX_TOKENS)
             })
 
             if (msg.metadata_url) {
-                void fetchMetadata(id, msg.metadata_url)
+                // Если этот токен уже был в обработке — отменяем старое
+                cancelMeta(id)
+                fetchMetadata(id, msg.metadata_url)
             }
         }
     }
+
+    // --- lifecycle ---
 
     useEffect(() => {
         connect(0)

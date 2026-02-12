@@ -106,6 +106,7 @@ export default function SettingsDialog({
     const [migration, setMigration] = React.useState('0')
     const [openInBrowser, setOpenInBrowser] = React.useState(false)
 
+    const contentRef = React.useRef<HTMLDivElement | null>(null)
     const [errors, setErrors] = React.useState<Errors>({})
 
     React.useEffect(() => {
@@ -193,8 +194,13 @@ export default function SettingsDialog({
             <DialogTrigger asChild>{children}</DialogTrigger>
 
             <DialogContent
+                tabIndex={-1}
+                ref={contentRef}
                 className='sm:max-w-115'
-                onOpenAutoFocus={e => e.preventDefault()}
+                onOpenAutoFocus={e => {
+                    e.preventDefault()
+                    requestAnimationFrame(() => contentRef.current?.focus())
+                }}
             >
                 <DialogHeader>
                     <DialogTitle>Settings</DialogTitle>
