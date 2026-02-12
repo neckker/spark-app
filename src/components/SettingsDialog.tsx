@@ -1,4 +1,3 @@
-// SettingsDialog.tsx
 import React from 'react'
 import {
     Dialog,
@@ -15,22 +14,8 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
-import { LazyStore } from '@tauri-apps/plugin-store'
+import { useSettings } from '@/context/SettingsContext'
 import toast from 'react-hot-toast'
-
-interface Settings {
-    devMin: number
-    devMax: number
-    migrationPct: number
-    openInBrowser: boolean
-}
-
-const defaultSettings: Settings = {
-    devMin: 0,
-    devMax: 100,
-    migrationPct: 0,
-    openInBrowser: false
-}
 
 type FieldKey = 'devMin' | 'devMax' | 'migrationPct'
 type Errors = Partial<Record<FieldKey, string>>
@@ -96,44 +81,30 @@ export default function SettingsDialog({
 }: {
     children: React.ReactNode
 }) {
+    const { settings, store, ready, patch } = useSettings()
+
     const [open, setOpen] = React.useState(false)
-    const [store, setStore] = React.useState<LazyStore>()
-    const [loading, setLoading] = React.useState(true)
     const [busy, setBusy] = React.useState(false)
 
-    const [devMin, setDevMin] = React.useState('0')
-    const [devMax, setDevMax] = React.useState('100')
-    const [migration, setMigration] = React.useState('0')
+    // Локальные черновики полей — инициализируем из контекста при открытии
+    const [devMin, setDevMin] = React.useState('')
+    const [devMax, setDevMax] = React.useState('')
+    const [migration, setMigration] = React.useState('')
     const [openInBrowser, setOpenInBrowser] = React.useState(false)
-
-    const contentRef = React.useRef<HTMLDivElement | null>(null)
     const [errors, setErrors] = React.useState<Errors>({})
 
+    const contentRef = React.useRef<HTMLDivElement | null>(null)
+
+    // При открытии диалога синхронизируем черновики с актуальными настройками
     React.useEffect(() => {
-        async function init() {
-            const s = new LazyStore('settings.json')
-
-            setDevMin(String(
-                (await s.get<number>('devMin')) ?? defaultSettings.devMin
-            ))
-            setDevMax(String(
-                (await s.get<number>('devMax')) ?? defaultSettings.devMax
-            ))
-            setMigration(String(
-                (await s.get<number>('migrationPct')) ??
-                defaultSettings.migrationPct
-            ))
-            setOpenInBrowser(
-                (await s.get<boolean>('openInBrowser')) ??
-                defaultSettings.openInBrowser
-            )
-
-            setStore(s)
-            setLoading(false)
+        if (open) {
+            setDevMin(String(settings.devMin))
+            setDevMax(String(settings.devMax))
+            setMigration(String(settings.migrationPct))
+            setOpenInBrowser(settings.openInBrowser)
+            setErrors({})
         }
-
-        init().catch(() => setLoading(false))
-    }, [])
+    }, [open, settings])
 
     const validate = () => {
         const next: Errors = {}
@@ -172,12 +143,7 @@ export default function SettingsDialog({
 
         setBusy(true)
         try {
-            await store.set('devMin', res.values.devMin)
-            await store.set('devMax', res.values.devMax)
-            await store.set('migrationPct', res.values.migrationPct)
-            await store.set('openInBrowser', res.values.openInBrowser)
-            await store.save()
-
+            await patch(res.values)
             setOpen(false)
             toast.success('Settings saved')
         } catch {
@@ -187,7 +153,7 @@ export default function SettingsDialog({
         }
     }
 
-    if (loading) return null
+    if (!ready) return null
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
@@ -204,9 +170,7 @@ export default function SettingsDialog({
             >
                 <DialogHeader>
                     <DialogTitle>Settings</DialogTitle>
-                    <DialogDescription>
-                        Настройки приложения
-                    </DialogDescription>
+                    <DialogDescription>Настройки приложения</DialogDescription>
                 </DialogHeader>
 
                 <div className='space-y-3'>
