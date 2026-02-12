@@ -1,10 +1,13 @@
 import { useMemo } from 'react'
 import toast from 'react-hot-toast'
+
+import { AXIOM_URL } from '@/lib/axiom'
 import { Badge } from '@/components/ui/badge'
 
 import pumpIcon from '@/assets/pump.svg'
 import mayhemIcon from '@/assets/mayhem.svg'
 import bonkIcon from '@/assets/bonk.svg'
+import axiomIcon from '@/assets/axiom.svg'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
@@ -181,7 +184,7 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                                 target='_blank'
                                 rel='noreferrer'
                                 title={proto.title}
-                                className='hover:opacity-90 transition-opacity'
+                                className='hover:opacity-80 transition-opacity'
                             >
                                 <img
                                     src={protoIcon}
@@ -191,6 +194,21 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                                 />
                             </a>
                         )}
+
+                        <a
+                            href={AXIOM_URL(token.address)}
+                            target='_blank'
+                            rel='noreferrer'
+                            title='View on Axiom'
+                            className='hover:opacity-80 transition-opacity'
+                        >
+                            <img
+                                src={axiomIcon}
+                                alt='Axiom'
+                                className='h-4 w-4'
+                                draggable={false}
+                            />
+                        </a>
 
                         {links.twitter && (
                             <a

@@ -1,6 +1,8 @@
 import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
+
+import { AXIOM_URL } from '@/lib/axiom'
 import { useSettings } from '@/context/SettingsContext'
 
 type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
@@ -46,9 +48,6 @@ const META_RETRY_DELAY_MS = 1500
 
 const PRICE_PATH = '/hub/price'
 const PRICE_POLL_MS = 30_000
-
-const AXIOM_URL = (address: string) =>
-    `https://axiom.trade/t/${address}/@neckker`
 
 const http = axios.create({
     baseURL: HTTP_BASE,
