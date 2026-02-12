@@ -30,7 +30,13 @@ export default function App() {
 
                 <div className='mt-6 space-y-2.5'>
                     {tokens.length ? (
-                        tokens.map(item => <TokenRow key={item.id} item={item} />)
+                        tokens.map(item => (
+                            <TokenRow
+                                key={item.id}
+                                item={item}
+                                solPriceUsd={solPriceUsd}
+                            />
+                        ))
                     ) : (
                         <EmptyTokens />
                     )}

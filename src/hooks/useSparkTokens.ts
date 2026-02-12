@@ -8,6 +8,8 @@ import { useSettings } from '@/context/SettingsContext'
 type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
 type PriceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+// ─── WS message types ────────────────────────────────────────────────────────
+
 export type TokenEvent = {
     address: string
     name: string
@@ -17,6 +19,40 @@ export type TokenEvent = {
     metadata_url: string | null
     is_mayhem_mode: boolean
 }
+
+export type DevTokenStats = {
+    total: number
+    migrated: number
+    rate: number
+}
+
+export type DevInfo = {
+    address: string
+    tokens: DevTokenStats
+}
+
+export type LastMigratedToken = {
+    pair: string
+    address: string
+    name: string
+    image: string
+    ticker: string
+    supply: number
+    created_at: number
+    price: number
+    market_cap: number          // в SOL
+    total_fees: number | null   // может отсутствовать
+    is_dex_paid: boolean | null
+    dex_paid_at: number | null  // timestamp ms или null
+}
+
+export type WsTokenMessage = {
+    newpair: TokenEvent
+    dev: DevInfo
+    last_migrated: LastMigratedToken[]
+}
+
+// ─── Card model ──────────────────────────────────────────────────────────────
 
 export type Metadata = {
     name?: string | null
@@ -31,18 +67,21 @@ export type Metadata = {
 export type TokenCardModel = {
     id: string
     token: TokenEvent
+    dev: DevInfo
+    lastMigrated: LastMigratedToken[]
     metadata: Metadata | null
     metaStatus: 'idle' | 'loading' | 'ready' | 'error'
 }
 
 type WsMessage = Record<string, unknown>
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const WS_URL = 'ws://127.0.0.1:8000/hub/ws'
 const HTTP_BASE = 'http://127.0.0.1:5000'
 
 const MAX_TOKENS = 10
 const META_TIMEOUT_MS = 1500
-
 const META_RETRY_ATTEMPTS = 5
 const META_RETRY_DELAY_MS = 1500
 
@@ -55,23 +94,69 @@ const http = axios.create({
     headers: { Accept: 'application/json' }
 })
 
-function isTokenEvent(x: unknown): x is TokenEvent {
+// ─── Guards & normalizers ────────────────────────────────────────────────────
+
+function isWsTokenMessage(x: unknown): x is WsTokenMessage {
     if (!x || typeof x !== 'object') return false
     const v = x as Record<string, unknown>
-    return (
-        typeof v.address === 'string' &&
-        typeof v.name === 'string' &&
-        typeof v.ticker === 'string' &&
-        typeof v.devhold === 'number' &&
-        typeof v.protocol === 'string' &&
-        (typeof v.metadata_url === 'string' || v.metadata_url === null)
-    )
+
+    const np = v.newpair
+    if (!np || typeof np !== 'object') return false
+    const p = np as Record<string, unknown>
+    if (
+        typeof p.address !== 'string' ||
+        typeof p.name !== 'string' ||
+        typeof p.ticker !== 'string' ||
+        typeof p.devhold !== 'number' ||
+        typeof p.protocol !== 'string' ||
+        (typeof p.metadata_url !== 'string' && p.metadata_url !== null)
+    ) return false
+
+    const dev = v.dev
+    if (!dev || typeof dev !== 'object') return false
+    const d = dev as Record<string, unknown>
+    if (typeof d.address !== 'string') return false
+    const tk = d.tokens
+    if (!tk || typeof tk !== 'object') return false
+    const t = tk as Record<string, unknown>
+    if (
+        typeof t.total !== 'number' ||
+        typeof t.migrated !== 'number' ||
+        typeof t.rate !== 'number'
+    ) return false
+
+    if (!Array.isArray(v.last_migrated)) return false
+
+    return true
+}
+
+function normalizeLastMigrated(raw: unknown[]): LastMigratedToken[] {
+    return raw
+        .filter(item => item && typeof item === 'object')
+        .map(item => {
+            const r = item as Record<string, unknown>
+            return {
+                pair:        typeof r.pair === 'string' ? r.pair : '',
+                address:     typeof r.address === 'string' ? r.address : '',
+                name:        typeof r.name === 'string' ? r.name : '',
+                image:       typeof r.image === 'string' ? r.image : '',
+                ticker:      typeof r.ticker === 'string' ? r.ticker : '',
+                supply:      typeof r.supply === 'number' ? r.supply : 0,
+                created_at:  typeof r.created_at === 'number' ? r.created_at : 0,
+                price:       typeof r.price === 'number' ? r.price : 0,
+                market_cap:  typeof r.market_cap === 'number' ? r.market_cap : 0,
+                total_fees:  typeof r.total_fees === 'number' ? r.total_fees : null,
+                is_dex_paid: typeof r.is_dex_paid === 'boolean' ? r.is_dex_paid : null,
+                dex_paid_at: typeof r.dex_paid_at === 'number' ? r.dex_paid_at : null,
+            }
+        })
+        .slice(0, 3)
 }
 
 function normalizeMetadata(raw: any): Metadata | null {
     if (!raw || typeof raw !== 'object') return null
     const m: Metadata = {
-        name: typeof raw.name === 'string' ? raw.name : null,
+        name:      typeof raw.name === 'string' ? raw.name : null,
         ticker:
             typeof raw.symbol === 'string'
                 ? raw.symbol
@@ -84,55 +169,47 @@ function normalizeMetadata(raw: any): Metadata | null {
                 : typeof raw.image_url === 'string'
                   ? raw.image_url
                   : null,
-        telegram: typeof raw.telegram === 'string' ? raw.telegram : null,
+        telegram:  typeof raw.telegram === 'string' ? raw.telegram : null,
         website:
             typeof raw.website === 'string'
                 ? raw.website
                 : typeof raw.external_url === 'string'
                   ? raw.external_url
                   : null,
-        twitter: typeof raw.twitter === 'string' ? raw.twitter : null
+        twitter:   typeof raw.twitter === 'string' ? raw.twitter : null,
     }
     m.has_socials = Boolean(m.twitter || m.telegram || m.website)
     return m
 }
 
+// ─── Hook ────────────────────────────────────────────────────────────────────
+
 export function useSparkTokens() {
     const { settings } = useSettings()
 
-    // Refs чтобы ws.onmessage всегда видел свежие значения
-    // без пересоздания замыкания при каждом изменении настроек
-    const openInBrowserRef = useRef(settings.openInBrowser)
-    const devHoldFilterRef = useRef({ min: settings.devMin, max: settings.devMax })
+    const openInBrowserRef  = useRef(settings.openInBrowser)
+    const devHoldFilterRef  = useRef({ min: settings.devMin, max: settings.devMax })
 
-    useEffect(() => {
-        openInBrowserRef.current = settings.openInBrowser
-    }, [settings.openInBrowser])
+    useEffect(() => { openInBrowserRef.current = settings.openInBrowser }, [settings.openInBrowser])
+    useEffect(() => { devHoldFilterRef.current = { min: settings.devMin, max: settings.devMax } }, [settings.devMin, settings.devMax])
 
-    useEffect(() => {
-        devHoldFilterRef.current = { min: settings.devMin, max: settings.devMax }
-    }, [settings.devMin, settings.devMax])
-
-    const wsRef = useRef<WebSocket | null>(null)
-    const reconnectRef = useRef<number | null>(null)
-    const lastPingRecvRef = useRef<number | null>(null)
-
-    const metaInflightRef = useRef<Map<string, AbortController>>(new Map())
+    const wsRef              = useRef<WebSocket | null>(null)
+    const reconnectRef       = useRef<number | null>(null)
+    const lastPingRecvRef    = useRef<number | null>(null)
+    const metaInflightRef    = useRef<Map<string, AbortController>>(new Map())
     const metaRetryTimersRef = useRef<Map<string, number>>(new Map())
+    const totalProcessedRef  = useRef<number>(0)
+    const priceTimerRef      = useRef<number | null>(null)
+    const priceAbortRef      = useRef<AbortController | null>(null)
 
-    const totalProcessedRef = useRef<number>(0)
+    const [status, setStatus]                   = useState<WsStatus>('connecting')
+    const [pingMs, setPingMs]                   = useState<number | null>(null)
+    const [tokens, setTokens]                   = useState<TokenCardModel[]>([])
+    const [totalProcessed, setTotalProcessed]   = useState<number>(0)
+    const [solPriceUsd, setSolPriceUsd]         = useState<number | null>(null)
+    const [solPriceStatus, setSolPriceStatus]   = useState<PriceStatus>('idle')
 
-    const priceTimerRef = useRef<number | null>(null)
-    const priceAbortRef = useRef<AbortController | null>(null)
-
-    const [status, setStatus] = useState<WsStatus>('connecting')
-    const [pingMs, setPingMs] = useState<number | null>(null)
-    const [tokens, setTokens] = useState<TokenCardModel[]>([])
-    const [totalProcessed, setTotalProcessed] = useState<number>(0)
-    const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null)
-    const [solPriceStatus, setSolPriceStatus] = useState<PriceStatus>('idle')
-
-    // --- helpers ---
+    // helpers
 
     const clearReconnect = () => {
         if (reconnectRef.current !== null) {
@@ -164,7 +241,7 @@ export function useSparkTokens() {
         priceAbortRef.current = null
     }
 
-    // --- sol price ---
+    // SOL price
 
     const fetchSolPrice = async (silent = false) => {
         priceAbortRef.current?.abort()
@@ -190,18 +267,12 @@ export function useSparkTokens() {
     const startPricePolling = () => {
         stopPricePolling()
         void fetchSolPrice(false)
-        priceTimerRef.current = window.setInterval(() => {
-            void fetchSolPrice(true)
-        }, PRICE_POLL_MS)
+        priceTimerRef.current = window.setInterval(() => void fetchSolPrice(true), PRICE_POLL_MS)
     }
 
-    // --- metadata ---
+    // metadata
 
-    const attemptMeta = (
-        tokenId: string,
-        metadataUrl: string,
-        attemptsLeft: number
-    ) => {
+    const attemptMeta = (tokenId: string, metadataUrl: string, attemptsLeft: number) => {
         const prevTimer = metaRetryTimersRef.current.get(tokenId)
         if (prevTimer !== undefined) {
             window.clearTimeout(prevTimer)
@@ -225,34 +296,18 @@ export function useSparkTokens() {
                         }, META_RETRY_DELAY_MS)
                         metaRetryTimersRef.current.set(tokenId, timer)
                     } else {
-                        setTokens(prev =>
-                            prev.map(x =>
-                                x.id === tokenId
-                                    ? { ...x, metadata: null, metaStatus: 'error' }
-                                    : x
-                            )
-                        )
+                        setTokens(prev => prev.map(x => x.id === tokenId ? { ...x, metadata: null, metaStatus: 'error' } : x))
                         metaInflightRef.current.delete(tokenId)
                     }
                     return
                 }
 
                 const meta = normalizeMetadata(data)
-                setTokens(prev =>
-                    prev.map(x =>
-                        x.id === tokenId
-                            ? { ...x, metadata: meta, metaStatus: meta ? 'ready' : 'error' }
-                            : x
-                    )
-                )
+                setTokens(prev => prev.map(x => x.id === tokenId ? { ...x, metadata: meta, metaStatus: meta ? 'ready' : 'error' } : x))
                 metaInflightRef.current.delete(tokenId)
             })
             .catch((err: any) => {
-                const aborted =
-                    err?.name === 'CanceledError' ||
-                    err?.code === 'ERR_CANCELED' ||
-                    ctrl.signal.aborted
-                if (aborted) return
+                if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || ctrl.signal.aborted) return
 
                 const isRetryable =
                     err?.code === 'ECONNABORTED' ||
@@ -268,13 +323,7 @@ export function useSparkTokens() {
                     return
                 }
 
-                setTokens(prev =>
-                    prev.map(x =>
-                        x.id === tokenId
-                            ? { ...x, metadata: null, metaStatus: 'error' }
-                            : x
-                    )
-                )
+                setTokens(prev => prev.map(x => x.id === tokenId ? { ...x, metadata: null, metaStatus: 'error' } : x))
                 metaInflightRef.current.delete(tokenId)
             })
     }
@@ -283,7 +332,7 @@ export function useSparkTokens() {
         attemptMeta(tokenId, metadataUrl, META_RETRY_ATTEMPTS)
     }
 
-    // --- websocket ---
+    // WebSocket
 
     const connect = (attempt = 0) => {
         clearReconnect()
@@ -293,17 +342,14 @@ export function useSparkTokens() {
         const ws = new WebSocket(WS_URL)
         wsRef.current = ws
 
-        ws.onopen = () => setStatus('open')
+        ws.onopen  = () => setStatus('open')
         ws.onerror = () => setStatus('error')
 
         ws.onclose = () => {
             setStatus('closed')
             const base = Math.min(10_000, 500 * 2 ** attempt)
             const jitter = Math.floor(Math.random() * 250)
-            reconnectRef.current = window.setTimeout(
-                () => connect(attempt + 1),
-                base + jitter
-            )
+            reconnectRef.current = window.setTimeout(() => connect(attempt + 1), base + jitter)
         }
 
         ws.onmessage = evt => {
@@ -327,46 +373,46 @@ export function useSparkTokens() {
                 return
             }
 
-            if (!isTokenEvent(msg)) return
+            if (!isWsTokenMessage(parsed)) return
 
-            // Фильтр по devhold — токены вне диапазона пропускаем полностью,
-            // метаданные не запрашиваем, в список не добавляем
+            const { newpair, dev, last_migrated } = parsed
+
+            // Фильтр по devhold
             const { min, max } = devHoldFilterRef.current
-            if (msg.devhold < min || msg.devhold > max) return
+            if (newpair.devhold < min || newpair.devhold > max) return
 
             totalProcessedRef.current += 1
             setTotalProcessed(totalProcessedRef.current)
 
-            const id = msg.address
+            const id = newpair.address
 
-            // Открываем страницу токена если настройка включена.
-            // Читаем из ref — замыкание не устаревает при смене настройки
             if (openInBrowserRef.current) {
                 void openUrl(AXIOM_URL(id))
             }
+
+            const lastMigrated = normalizeLastMigrated(last_migrated)
 
             setTokens(prevTokens => {
                 const rest = prevTokens.filter(x => x.id !== id)
                 const item: TokenCardModel = {
                     id,
-                    token: msg,
+                    token: newpair,
+                    dev,
+                    lastMigrated,
                     metadata: null,
-                    metaStatus:
-                        msg.metadata_url && msg.metadata_url.length
-                            ? 'loading'
-                            : 'error'
+                    metaStatus: newpair.metadata_url && newpair.metadata_url.length ? 'loading' : 'error'
                 }
                 return [item, ...rest].slice(0, MAX_TOKENS)
             })
 
-            if (msg.metadata_url) {
+            if (newpair.metadata_url) {
                 cancelMeta(id)
-                fetchMetadata(id, msg.metadata_url)
+                fetchMetadata(id, newpair.metadata_url)
             }
         }
     }
 
-    // --- lifecycle ---
+    // lifecycle
 
     useEffect(() => {
         connect(0)
@@ -388,6 +434,6 @@ export function useSparkTokens() {
         totalProcessed,
         clearTokens: () => setTokens([]),
         solPriceUsd,
-        solPriceStatus
+        solPriceStatus,
     }
 }

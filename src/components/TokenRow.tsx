@@ -3,33 +3,43 @@ import toast from 'react-hot-toast'
 
 import { AXIOM_URL } from '@/lib/axiom'
 import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 
-import pumpIcon from '@/assets/pump.svg'
+import pumpIcon   from '@/assets/pump.svg'
 import mayhemIcon from '@/assets/mayhem.svg'
-import bonkIcon from '@/assets/bonk.svg'
-import axiomIcon from '@/assets/axiom.svg'
+import bonkIcon   from '@/assets/bonk.svg'
+import axiomIcon  from '@/assets/axiom.svg'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-
 import {
-    CheckCircle2,
-    CircleDashed,
-    Search,
-    Globe,
-    Send,
-    TriangleAlert,
-    Twitter
+    CheckCircle2, CircleDashed, Search,
+    Globe, Send, TriangleAlert, Twitter,
+    ChefHat, Coins, GitMerge, Percent,
+    BadgeDollarSign, ChartNoAxesCombined,
+    HandCoins,
 } from 'lucide-react'
 
-import type { TokenCardModel } from '@/hooks/useSparkTokens'
+import type { TokenCardModel, LastMigratedToken } from '@/hooks/useSparkTokens'
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
 function safeUrl(u: string) {
-    try {
-        return new URL(u).toString()
-    } catch {
-        return ''
-    }
+    try { return new URL(u).toString() } catch { return '' }
 }
+
+function fmtUsdCap(usd: number): string {
+    if (!Number.isFinite(usd) || usd <= 0) return '—'
+    if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`
+    if (usd >= 1_000)     return `$${(usd / 1_000).toFixed(1)}k`
+    return `$${usd.toFixed(0)}`
+}
+
+function fmtSol(sol: number | null): string {
+    if (sol === null || !Number.isFinite(sol)) return '—'
+    return sol.toFixed(2)
+}
+
+// ─── constants ───────────────────────────────────────────────────────────────
 
 const PROTOCOLS: Record<
     string,
@@ -47,38 +57,119 @@ const PROTOCOLS: Record<
     }
 }
 
-export function TokenRow({ item }: { item: TokenCardModel }) {
-    const { token, metadata, metaStatus } = item
+// ─── MigratedTokenCard ───────────────────────────────────────────────────────
+
+function MigratedTokenCard({
+    t,
+    solPrice
+}: {
+    t: LastMigratedToken
+    solPrice: number | null
+}) {
+    const mcUsd = solPrice && t.market_cap > 0 ? t.market_cap * solPrice : null
+
+    // dex: зелёный если оплачен, красный если явно не оплачен, серый если нет данных
+    const dexCls =
+        t.is_dex_paid === true  ? 'text-emerald-400' :
+        t.is_dex_paid === false ? 'text-red-400' :
+                                  'text-zinc-600'
+
+    return (
+        <a
+            href={AXIOM_URL(t.address)}
+            target='_blank'
+            rel='noreferrer'
+            className={[
+                'flex items-center gap-2.5',
+                'rounded-lg px-2.5 py-2',
+                'bg-white/3 ring-1 ring-white/8',
+                'hover:bg-white/6 transition-colors',
+                'min-w-0'
+            ].join(' ')}
+        >
+            {/* image */}
+            {/* <img
+                src={t.image}
+                alt={t.ticker}
+                className='h-8 w-8 rounded-md object-cover shrink-0 bg-white/5'
+                draggable={false}
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+            /> */}
+
+            <Avatar className='h-8 w-8 rounded-lg'>
+                <AvatarImage src={t.image} className='rounded-lg object-cover' />
+                <AvatarFallback className='rounded-lg bg-white/5 text-xs'>
+                    {t.ticker.slice(0, 2) || '??'}
+                </AvatarFallback>
+            </Avatar>
+
+            <div className='min-w-0 flex-1'>
+                {/* ticker + name */}
+                <div className='flex items-baseline gap-1.5 truncate'>
+                    <span className='text-sm font-semibold text-zinc-100'>
+                        {t.ticker.toUpperCase()}
+                    </span>
+                    <span className='text-sm font-normal text-muted hover:text-muted/80 transition-colors truncate'>
+                        {t.name}
+                    </span>
+                </div>
+
+                {/* mcap + fees + dex */}
+                <div className='flex items-center space-x-2 mt-1 flex-wrap'>
+                    {mcUsd !== null && (
+                        <span className='inline-flex items-center gap-1 text-xs text-muted'>
+                            {/* <span className='text-muted'>MC</span> */}
+                            <ChartNoAxesCombined className='size-4' />
+                            <span className='tabular-nums text-emerald-300 font-medium'>{fmtUsdCap(mcUsd)}</span>
+                        </span>
+                    )}
+
+                    {t.total_fees !== null && (
+                        <span className='inline-flex items-center gap-1 text-xs text-muted'>
+                            <HandCoins className='size-4' />
+                            <span className='tabular-nums text-white font-medium'>{fmtSol(t.total_fees)} SOL</span>
+                        </span>
+                    )}
+
+                    {t.is_dex_paid !== null && (
+                        <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${dexCls}`}>
+                            <BadgeDollarSign className='h-4 w-4' />
+                            DEX
+                        </span>
+                    )}
+                </div>
+            </div>
+        </a>
+    )
+}
+
+// ─── TokenRow ────────────────────────────────────────────────────────────────
+
+export function TokenRow({
+    item,
+    solPriceUsd
+}: {
+    item: TokenCardModel
+    solPriceUsd: number | null
+}) {
+    const { token, dev, lastMigrated, metadata, metaStatus } = item
 
     const rawTicker = metadata?.ticker || token.ticker || ''
-    const ticker = rawTicker.trim() ? rawTicker.toUpperCase() : 'NA'
-
-    const name = metadata?.name || token.name
+    const ticker    = rawTicker.trim() ? rawTicker.toUpperCase() : 'NA'
+    const name      = metadata?.name || token.name
     const avatarUrl = metadata?.image_url ? safeUrl(metadata.image_url) : ''
 
-    const links = useMemo(() => {
-        return {
-            website: metadata?.website ? safeUrl(metadata.website) : '',
-            twitter: metadata?.twitter ? safeUrl(metadata.twitter) : '',
-            telegram: metadata?.telegram ? safeUrl(metadata.telegram) : '',
-            json: token.metadata_url ? safeUrl(token.metadata_url) : ''
-        }
-    }, [
-        metadata?.website,
-        metadata?.twitter,
-        metadata?.telegram,
-        token.metadata_url
-    ])
+    const links = useMemo(() => ({
+        website:  metadata?.website  ? safeUrl(metadata.website)  : '',
+        twitter:  metadata?.twitter  ? safeUrl(metadata.twitter)  : '',
+        telegram: metadata?.telegram ? safeUrl(metadata.telegram) : '',
+    }), [metadata?.website, metadata?.twitter, metadata?.telegram])
 
-    const protocol = token.protocol
-    const proto = protocol ? PROTOCOLS[protocol] : null
-
-    const isMayhem = token.is_mayhem_mode === true
-
-    const protoIcon = protocol === 'pump' && isMayhem ? mayhemIcon : proto?.icon
-
-    const protoTitle =
-        protocol === 'pump' && isMayhem ? 'pump.fun (mayhem)' : proto?.title
+    const protocol   = token.protocol
+    const proto      = protocol ? PROTOCOLS[protocol] : null
+    const isMayhem   = token.is_mayhem_mode === true
+    const protoIcon  = protocol === 'pump' && isMayhem ? mayhemIcon : proto?.icon
+    const protoTitle = protocol === 'pump' && isMayhem ? 'pump.fun (mayhem)' : proto?.title
 
     const onCopyAddress = async () => {
         try {
@@ -90,71 +181,46 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
     }
 
     const MetaIcon =
-        metaStatus === 'loading'
-            ? CircleDashed
-            : metaStatus === 'ready'
-              ? CheckCircle2
-              : metaStatus === 'error'
-                ? TriangleAlert
-                : null
+        metaStatus === 'loading' ? CircleDashed :
+        metaStatus === 'ready'   ? CheckCircle2 :
+        metaStatus === 'error'   ? TriangleAlert : null
 
     const metaCls =
-        metaStatus === 'loading'
-            ? 'text-zinc-400'
-            : metaStatus === 'ready'
-              ? 'text-emerald-300'
-              : metaStatus === 'error'
-                ? 'text-red-300'
-                : 'text-zinc-400'
+        metaStatus === 'loading' ? 'text-zinc-400' :
+        metaStatus === 'ready'   ? 'text-emerald-300' :
+        metaStatus === 'error'   ? 'text-red-300' : 'text-zinc-400'
 
     const iconLinkCls = 'hover:text-zinc-200 transition-colors'
 
+    // rate: < 5% красный, 5–25% жёлтый, > 25% зелёный
+    const rateCls =
+        dev.tokens.rate >= 25 ? 'text-emerald-400' :
+        dev.tokens.rate >= 5  ? 'text-amber-300'   :
+                                'text-red-400'
+
     return (
-        <div
-            className={[
-                'rounded-xl px-3 py-2',
-                'bg-panel',
-                'ring-1 ring-line'
-            ].join(' ')}
-        >
+        <div className='rounded-xl px-3 py-2.5 bg-panel ring-1 ring-line space-y-2.5'>
+
+            {/* ── token info ── */}
             <div className='flex items-start gap-3'>
-                {/* avatar with hover preview */}
-                <div className='relative group'>
+                <div className='relative group shrink-0'>
                     <Avatar className='h-10 w-10 rounded-lg'>
-                        <AvatarImage
-                            src={avatarUrl}
-                            className='rounded-lg object-cover'
-                        />
+                        <AvatarImage src={avatarUrl} className='rounded-lg object-cover' />
                         <AvatarFallback className='rounded-lg bg-white/5 text-xs'>
                             {ticker.slice(0, 2) || '??'}
                         </AvatarFallback>
                     </Avatar>
 
                     {avatarUrl && (
-                        <div
-                            className={[
-                                'pointer-events-none',
-                                'absolute left-0 top-0 z-50',
-                                'opacity-0 scale-95',
-                                'group-hover:opacity-100 group-hover:scale-100',
-                                'transition duration-150 ease-out',
-                                '-translate-y-1 -translate-x-1',
-                                'origin-top-left'
-                            ].join(' ')}
-                        >
-                            <div
-                                className={[
-                                    'h-40 w-40 rounded-xl overflow-hidden',
-                                    'ring-1 ring-white/15',
-                                    'bg-zinc-950/60 backdrop-blur'
-                                ].join(' ')}
-                            >
-                                <img
-                                    src={avatarUrl}
-                                    alt={ticker}
-                                    className='h-full w-full object-cover'
-                                    draggable={false}
-                                />
+                        <div className={[
+                            'pointer-events-none absolute left-0 top-0 z-50',
+                            'opacity-0 scale-95',
+                            'group-hover:opacity-100 group-hover:scale-100',
+                            'transition duration-150 ease-out',
+                            '-translate-y-1 -translate-x-1 origin-top-left'
+                        ].join(' ')}>
+                            <div className='h-40 w-40 rounded-xl overflow-hidden ring-1 ring-white/15 bg-zinc-950/60 backdrop-blur'>
+                                <img src={avatarUrl} alt={ticker} className='h-full w-full object-cover' draggable={false} />
                             </div>
                         </div>
                     )}
@@ -166,12 +232,8 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
                         <button
                             type='button'
                             onClick={onCopyAddress}
-                            className={[
-                                'font-normal text-muted',
-                                'hover:text-muted/80 transition-colors',
-                                'cursor-pointer'
-                            ].join(' ')}
-                            title='Click name to copy address'
+                            className='font-normal text-muted hover:text-muted/80 transition-colors cursor-pointer'
+                            title='Click to copy address'
                         >
                             {name}
                         </button>
@@ -179,110 +241,114 @@ export function TokenRow({ item }: { item: TokenCardModel }) {
 
                     <div className='mt-1 flex items-center gap-2 text-zinc-400'>
                         {proto && (
-                            <a
-                                href={proto.href(token.address)}
-                                target='_blank'
-                                rel='noreferrer'
-                                title={proto.title}
-                                className='hover:opacity-80 transition-opacity'
-                            >
-                                <img
-                                    src={protoIcon}
-                                    alt={protoTitle}
-                                    className='h-4 w-4'
-                                    draggable={false}
-                                />
+                            <a href={proto.href(token.address)} target='_blank' rel='noreferrer'
+                               title={protoTitle} className='hover:opacity-80 transition-opacity'>
+                                <img src={protoIcon} alt={protoTitle} className='h-4 w-4' draggable={false} />
                             </a>
                         )}
 
-                        <a
-                            href={AXIOM_URL(token.address)}
-                            target='_blank'
-                            rel='noreferrer'
-                            title='View on Axiom'
-                            className='hover:opacity-80 transition-opacity'
-                        >
-                            <img
-                                src={axiomIcon}
-                                alt='Axiom'
-                                className='h-4 w-4'
-                                draggable={false}
-                            />
+                        <a href={AXIOM_URL(token.address)} target='_blank' rel='noreferrer'
+                           title='View on Axiom' className='hover:opacity-80 transition-opacity'>
+                            <img src={axiomIcon} alt='Axiom' className='h-4 w-4' draggable={false} />
                         </a>
 
                         {links.twitter && (
-                            <a
-                                href={links.twitter}
-                                target='_blank'
-                                rel='noreferrer'
-                                className='text-[#5dbcff] hover:text-[#5dbcff]/80 transition-colors'
-                                title={links.twitter}
-                            >
+                            <a href={links.twitter} target='_blank' rel='noreferrer'
+                               className='text-[#5dbcff] hover:text-[#5dbcff]/80 transition-colors' title={links.twitter}>
                                 <Twitter className='h-4 w-4' />
                             </a>
                         )}
-
                         {links.website && (
-                            <a
-                                href={links.website}
-                                target='_blank'
-                                rel='noreferrer'
-                                className={iconLinkCls}
-                                title={links.website}
-                            >
+                            <a href={links.website} target='_blank' rel='noreferrer'
+                               className={iconLinkCls} title={links.website}>
                                 <Globe className='h-4 w-4' />
                             </a>
                         )}
-
                         {links.telegram && (
-                            <a
-                                href={links.telegram}
-                                target='_blank'
-                                rel='noreferrer'
-                                className={iconLinkCls}
-                                title={links.telegram}
-                            >
+                            <a href={links.telegram} target='_blank' rel='noreferrer'
+                               className={iconLinkCls} title={links.telegram}>
                                 <Send className='h-4 w-4' />
                             </a>
                         )}
 
-                        <a
-                            href={`https://x.com/search?q=${token.address}&src=typed_query&f=live`}
-                            target='_blank'
-                            rel='noreferrer'
-                            className={iconLinkCls}
-                        >
+                        <a href={`https://x.com/search?q=${token.address}&src=typed_query&f=live`}
+                           target='_blank' rel='noreferrer' className={iconLinkCls}>
                             <Search className='h-4 w-4' />
                         </a>
 
                         {MetaIcon && (
-                            <MetaIcon
-                                className={[
-                                    'h-4 w-4',
-                                    metaStatus === 'loading'
-                                        ? 'animate-spin'
-                                        : '',
-                                    metaCls
-                                ].join(' ')}
-                            />
+                            <MetaIcon className={[
+                                'h-4 w-4',
+                                metaStatus === 'loading' ? 'animate-spin' : '',
+                                metaCls
+                            ].join(' ')} />
                         )}
 
-                        <Badge
-                            variant='secondary'
-                            className={[
-                                'ml-1',
-                                'h-5 px-2',
-                                'text-[11px] tabular-nums',
-                                'bg-zinc-900/70 text-zinc-200',
-                                'ring-1 ring-white/10'
-                            ].join(' ')}
-                            title='Dev hold'
-                        >
+                        {/* devhold — в той же строке */}
+                        <Badge variant='secondary' className={[
+                            'ml-1 h-5 px-2',
+                            'text-[11px] tabular-nums',
+                            'bg-zinc-900/70 text-zinc-200',
+                            'ring-1 ring-white/10'
+                        ].join(' ')} title='Dev hold'>
                             DEV {token.devhold}%
                         </Badge>
                     </div>
                 </div>
             </div>
+
+            {/* ── dev stats ── */}
+            <Separator className='opacity-50' />
+
+            <div className='flex items-center gap-3 text-xs flex-wrap'>
+                {/* заголовок */}
+                <span className='inline-flex items-center gap-1 text-muted text-xs font-medium uppercase tracking-wide'>
+                    <ChefHat className='h-3.5 w-3.5' />
+                    Dev
+                </span>
+
+                <span className='inline-flex items-center gap-1' title='Total tokens created'>
+                    <Coins className='h-3.5 w-3.5 text-muted' />
+                    <span className='tabular-nums text-white font-medium'>{dev.tokens.total}</span>
+                    <span className='text-muted font-mono'>tokens</span>
+                </span>
+
+                <span className='inline-flex items-center gap-1' title='Migrated tokens'>
+                    <GitMerge className='h-3.5 w-3.5 text-muted' />
+                    <span className='tabular-nums text-white font-medium'>{dev.tokens.migrated}</span>
+                    <span className='text-muted font-mono'>migrated</span>
+                </span>
+
+                <span className='inline-flex items-center gap-1' title='Migration rate'>
+                    <Percent className='h-3.5 w-3.5 text-muted' />
+                    <span className={`tabular-nums font-medium ${rateCls}`}>
+                        {dev.tokens.rate.toFixed(1)}%
+                    </span>
+                    <span className='text-muted font-mono'>rate</span>
+                </span>
+            </div>
+
+            {/* ── last migrated ── */}
+            {lastMigrated.length > 0 && (
+                <>
+                    <Separator className='opacity-50' />
+
+                    <div className='space-y-1.5'>
+                        <div className='text-[11px] text-muted font-medium uppercase tracking-wide'>
+                            Last migrated
+                        </div>
+                        <div className='flex flex-col gap-2'>
+                            {lastMigrated.map(t => (
+                                <MigratedTokenCard
+                                    key={t.address || t.pair}
+                                    t={t}
+                                    solPrice={solPriceUsd}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     )
 }

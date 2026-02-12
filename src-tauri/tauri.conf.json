@@ -14,13 +14,13 @@
             {
                 "title": "Spark",
                 "width": 500,
-                "height": 875,
+                "height": 900,
 
                 "minWidth": 480,
                 "minHeight": 450,
 
                 "maxWidth": 500,
-                "maxHeight": 900
+                "maxHeight": 1800
             }
         ],
         "security": {
