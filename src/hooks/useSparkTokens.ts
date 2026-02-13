@@ -8,8 +8,6 @@ import { useSettings } from '@/context/SettingsContext'
 type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
 type PriceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
-// ─── WS message types ────────────────────────────────────────────────────────
-
 export type TokenEvent = {
     address: string
     name: string
@@ -40,10 +38,10 @@ export type LastMigratedToken = {
     supply: number
     created_at: number
     price: number
-    market_cap: number          // в SOL
-    total_fees: number | null   // может отсутствовать
+    market_cap: number
+    total_fees: number | null
     is_dex_paid: boolean | null
-    dex_paid_at: number | null  // timestamp ms или null
+    dex_paid_at: number | null
 }
 
 export type WsTokenMessage = {
@@ -51,8 +49,6 @@ export type WsTokenMessage = {
     dev: DevInfo
     last_migrated: LastMigratedToken[]
 }
-
-// ─── Card model ──────────────────────────────────────────────────────────────
 
 export type Metadata = {
     name?: string | null
@@ -75,8 +71,6 @@ export type TokenCardModel = {
 
 type WsMessage = Record<string, unknown>
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
 const WS_URL = 'ws://127.0.0.1:8000/hub/ws'
 const HTTP_BASE = 'http://127.0.0.1:5000'
 
@@ -93,8 +87,6 @@ const http = axios.create({
     timeout: META_TIMEOUT_MS,
     headers: { Accept: 'application/json' }
 })
-
-// ─── Guards & normalizers ────────────────────────────────────────────────────
 
 function isWsTokenMessage(x: unknown): x is WsTokenMessage {
     if (!x || typeof x !== 'object') return false
@@ -126,7 +118,6 @@ function isWsTokenMessage(x: unknown): x is WsTokenMessage {
     ) return false
 
     if (!Array.isArray(v.last_migrated)) return false
-
     return true
 }
 
@@ -158,40 +149,44 @@ function normalizeMetadata(raw: any): Metadata | null {
     const m: Metadata = {
         name:      typeof raw.name === 'string' ? raw.name : null,
         ticker:
-            typeof raw.symbol === 'string'
-                ? raw.symbol
-                : typeof raw.ticker === 'string'
-                  ? raw.ticker
-                  : null,
+            typeof raw.symbol === 'string' ? raw.symbol :
+            typeof raw.ticker === 'string' ? raw.ticker : null,
         image_url:
-            typeof raw.image === 'string'
-                ? raw.image
-                : typeof raw.image_url === 'string'
-                  ? raw.image_url
-                  : null,
+            typeof raw.image === 'string' ? raw.image :
+            typeof raw.image_url === 'string' ? raw.image_url : null,
         telegram:  typeof raw.telegram === 'string' ? raw.telegram : null,
         website:
-            typeof raw.website === 'string'
-                ? raw.website
-                : typeof raw.external_url === 'string'
-                  ? raw.external_url
-                  : null,
+            typeof raw.website === 'string' ? raw.website :
+            typeof raw.external_url === 'string' ? raw.external_url : null,
         twitter:   typeof raw.twitter === 'string' ? raw.twitter : null,
     }
     m.has_socials = Boolean(m.twitter || m.telegram || m.website)
     return m
 }
 
-// ─── Hook ────────────────────────────────────────────────────────────────────
-
 export function useSparkTokens() {
-    const { settings } = useSettings()
+    const { settings, isBlacklisted } = useSettings()
 
+    // Refs — замыкание ws.onmessage всегда видит свежие значения
     const openInBrowserRef  = useRef(settings.openInBrowser)
-    const devHoldFilterRef  = useRef({ min: settings.devMin, max: settings.devMax })
+    const filtersRef = useRef({
+        devMin:       settings.devMin,
+        devMax:       settings.devMax,
+        migrationPct: settings.migrationPct,
+    })
 
-    useEffect(() => { openInBrowserRef.current = settings.openInBrowser }, [settings.openInBrowser])
-    useEffect(() => { devHoldFilterRef.current = { min: settings.devMin, max: settings.devMax } }, [settings.devMin, settings.devMax])
+    useEffect(() => { openInBrowserRef.current = settings.openInBrowser },  [settings.openInBrowser])
+    useEffect(() => {
+        filtersRef.current = {
+            devMin:       settings.devMin,
+            devMax:       settings.devMax,
+            migrationPct: settings.migrationPct,
+        }
+    }, [settings.devMin, settings.devMax, settings.migrationPct])
+
+    // isBlacklisted уже читает из ref внутри контекста — передаём напрямую
+    const isBlacklistedRef = useRef(isBlacklisted)
+    useEffect(() => { isBlacklistedRef.current = isBlacklisted }, [isBlacklisted])
 
     const wsRef              = useRef<WebSocket | null>(null)
     const reconnectRef       = useRef<number | null>(null)
@@ -202,14 +197,12 @@ export function useSparkTokens() {
     const priceTimerRef      = useRef<number | null>(null)
     const priceAbortRef      = useRef<AbortController | null>(null)
 
-    const [status, setStatus]                   = useState<WsStatus>('connecting')
-    const [pingMs, setPingMs]                   = useState<number | null>(null)
-    const [tokens, setTokens]                   = useState<TokenCardModel[]>([])
-    const [totalProcessed, setTotalProcessed]   = useState<number>(0)
-    const [solPriceUsd, setSolPriceUsd]         = useState<number | null>(null)
-    const [solPriceStatus, setSolPriceStatus]   = useState<PriceStatus>('idle')
-
-    // helpers
+    const [status, setStatus]                 = useState<WsStatus>('connecting')
+    const [pingMs, setPingMs]                 = useState<number | null>(null)
+    const [tokens, setTokens]                 = useState<TokenCardModel[]>([])
+    const [totalProcessed, setTotalProcessed] = useState<number>(0)
+    const [solPriceUsd, setSolPriceUsd]       = useState<number | null>(null)
+    const [solPriceStatus, setSolPriceStatus] = useState<PriceStatus>('idle')
 
     const clearReconnect = () => {
         if (reconnectRef.current !== null) {
@@ -241,8 +234,6 @@ export function useSparkTokens() {
         priceAbortRef.current = null
     }
 
-    // SOL price
-
     const fetchSolPrice = async (silent = false) => {
         priceAbortRef.current?.abort()
         const ctrl = new AbortController()
@@ -269,8 +260,6 @@ export function useSparkTokens() {
         void fetchSolPrice(false)
         priceTimerRef.current = window.setInterval(() => void fetchSolPrice(true), PRICE_POLL_MS)
     }
-
-    // metadata
 
     const attemptMeta = (tokenId: string, metadataUrl: string, attemptsLeft: number) => {
         const prevTimer = metaRetryTimersRef.current.get(tokenId)
@@ -303,7 +292,10 @@ export function useSparkTokens() {
                 }
 
                 const meta = normalizeMetadata(data)
-                setTokens(prev => prev.map(x => x.id === tokenId ? { ...x, metadata: meta, metaStatus: meta ? 'ready' : 'error' } : x))
+                setTokens(prev => prev.map(x => x.id === tokenId
+                    ? { ...x, metadata: meta, metaStatus: meta ? 'ready' : 'error' }
+                    : x
+                ))
                 metaInflightRef.current.delete(tokenId)
             })
             .catch((err: any) => {
@@ -331,8 +323,6 @@ export function useSparkTokens() {
     const fetchMetadata = (tokenId: string, metadataUrl: string) => {
         attemptMeta(tokenId, metadataUrl, META_RETRY_ATTEMPTS)
     }
-
-    // WebSocket
 
     const connect = (attempt = 0) => {
         clearReconnect()
@@ -366,7 +356,6 @@ export function useSparkTokens() {
                 ws.send('pong')
                 return
             }
-
             if (msg.type === 'pong_ack') {
                 const t0 = lastPingRecvRef.current
                 if (t0 !== null) setPingMs(Math.round(performance.now() - t0))
@@ -377,9 +366,17 @@ export function useSparkTokens() {
 
             const { newpair, dev, last_migrated } = parsed
 
-            // Фильтр по devhold
-            const { min, max } = devHoldFilterRef.current
-            if (newpair.devhold < min || newpair.devhold > max) return
+            // ── фильтры ──────────────────────────────────────────────────────
+            const { devMin, devMax, migrationPct } = filtersRef.current
+
+            // devhold вне диапазона
+            if (newpair.devhold < devMin || newpair.devhold > devMax) return
+
+            // migration rate ниже порога
+            if (dev.tokens.rate < migrationPct) return
+
+            // кошелёк в чёрном списке
+            if (isBlacklistedRef.current(dev.address)) return
 
             totalProcessedRef.current += 1
             setTotalProcessed(totalProcessedRef.current)
@@ -411,8 +408,6 @@ export function useSparkTokens() {
             }
         }
     }
-
-    // lifecycle
 
     useEffect(() => {
         connect(0)

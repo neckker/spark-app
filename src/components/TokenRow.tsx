@@ -1,9 +1,16 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { formatDistanceToNow } from 'date-fns'
 
 import { AXIOM_URL } from '@/lib/axiom'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import {
+    Dialog, DialogContent, DialogHeader,
+    DialogTitle, DialogDescription
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 import pumpIcon   from '@/assets/pump.svg'
 import mayhemIcon from '@/assets/mayhem.svg'
@@ -15,11 +22,12 @@ import {
     CheckCircle2, CircleDashed, Search,
     Globe, Send, TriangleAlert, Twitter,
     ChefHat, Coins, GitMerge, Percent,
-    BadgeDollarSign, ChartNoAxesCombined,
-    HandCoins,
+    BadgeDollarSign, ChartNoAxesCombined, HandCoins,
+    Tag, Ban, Clock
 } from 'lucide-react'
 
 import type { TokenCardModel, LastMigratedToken } from '@/hooks/useSparkTokens'
+import { useSettings } from '@/context/SettingsContext'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -37,6 +45,16 @@ function fmtUsdCap(usd: number): string {
 function fmtSol(sol: number | null): string {
     if (sol === null || !Number.isFinite(sol)) return '—'
     return sol.toFixed(2)
+}
+
+/** date-fns без суффикса "ago" */
+function fmtAgo(tsMs: number): string {
+    if (!tsMs) return ''
+    try {
+        return formatDistanceToNow(new Date(tsMs), { addSuffix: false })
+    } catch {
+        return ''
+    }
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -57,6 +75,62 @@ const PROTOCOLS: Record<
     }
 }
 
+// ─── LabelModal ──────────────────────────────────────────────────────────────
+
+function LabelModal({
+    open,
+    onClose,
+    address,
+    currentLabel,
+}: {
+    open: boolean
+    onClose: () => void
+    address: string
+    currentLabel: string
+}) {
+    const { setWalletLabel } = useSettings()
+    const [value, setValue] = useState(currentLabel)
+
+    const commit = async () => {
+        const trimmed = value.trim()
+        if (!trimmed) return
+        await setWalletLabel(address, trimmed)
+        toast.success(`Label saved: ${trimmed.slice(0, 10)}`)
+        onClose()
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
+            <DialogContent className='sm:max-w-xs'>
+                <DialogHeader>
+                    <DialogTitle>Label wallet</DialogTitle>
+                    <DialogDescription className='font-mono text-xs break-all'>
+                        {address}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className='space-y-3'>
+                    <Input
+                        autoFocus
+                        value={value}
+                        maxLength={10}
+                        placeholder='Up to 10 characters'
+                        onChange={e => setValue(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter')  { e.preventDefault(); void commit() }
+                            if (e.key === 'Escape') { e.preventDefault(); onClose() }
+                        }}
+                        className='bg-white/5 border-white/10'
+                    />
+                    <div className='flex justify-end gap-2'>
+                        <Button variant='ghost' onClick={onClose}>Cancel</Button>
+                        <Button onClick={() => void commit()} disabled={!value.trim()}>Save</Button>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 // ─── MigratedTokenCard ───────────────────────────────────────────────────────
 
 function MigratedTokenCard({
@@ -66,9 +140,9 @@ function MigratedTokenCard({
     t: LastMigratedToken
     solPrice: number | null
 }) {
-    const mcUsd = solPrice && t.market_cap > 0 ? t.market_cap * solPrice : null
+    const mcUsd   = solPrice && t.market_cap > 0 ? t.market_cap * solPrice : null
+    const agoText = t.created_at ? fmtAgo(t.created_at) : ''
 
-    // dex: зелёный если оплачен, красный если явно не оплачен, серый если нет данных
     const dexCls =
         t.is_dex_paid === true  ? 'text-emerald-400' :
         t.is_dex_paid === false ? 'text-red-400' :
@@ -88,14 +162,6 @@ function MigratedTokenCard({
             ].join(' ')}
         >
             {/* image */}
-            {/* <img
-                src={t.image}
-                alt={t.ticker}
-                className='h-8 w-8 rounded-md object-cover shrink-0 bg-white/5'
-                draggable={false}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-            /> */}
-
             <Avatar className='h-8 w-8 rounded-lg'>
                 <AvatarImage src={t.image} className='rounded-lg object-cover' />
                 <AvatarFallback className='rounded-lg bg-white/5 text-xs'>
@@ -114,10 +180,17 @@ function MigratedTokenCard({
                     </span>
                 </div>
 
-                {/* mcap + fees + dex */}
+                {/* date + mcap + fees + dex */}
                 <div className='flex items-center space-x-2 mt-1 flex-wrap'>
+                    {agoText && (
+                        <span className='inline-flex items-center gap-1 text-xs text-white/80'>
+                            <Clock className='size-3.5' />
+                            <span className='tabular-nums text-indigo-400 font-medium'>{agoText}</span>
+                        </span>
+                    )}
+
                     {mcUsd !== null && (
-                        <span className='inline-flex items-center gap-1 text-xs text-muted'>
+                        <span className='inline-flex items-center gap-1 text-xs text-white/80'>
                             {/* <span className='text-muted'>MC</span> */}
                             <ChartNoAxesCombined className='size-4' />
                             <span className='tabular-nums text-emerald-300 font-medium'>{fmtUsdCap(mcUsd)}</span>
@@ -125,9 +198,9 @@ function MigratedTokenCard({
                     )}
 
                     {t.total_fees !== null && (
-                        <span className='inline-flex items-center gap-1 text-xs text-muted'>
+                        <span className='inline-flex items-center gap-1 text-xs text-white/80'>
                             <HandCoins className='size-4' />
-                            <span className='tabular-nums text-white font-medium'>{fmtSol(t.total_fees)} SOL</span>
+                            <span className='tabular-nums text-violet-400 font-medium'>{fmtSol(t.total_fees)} SOL</span>
                         </span>
                     )}
 
@@ -153,7 +226,11 @@ export function TokenRow({
     solPriceUsd: number | null
 }) {
     const { token, dev, lastMigrated, metadata, metaStatus } = item
+    const { walletLabels, addToBlacklist } = useSettings()
 
+    const [labelModalOpen, setLabelModalOpen] = useState(false)
+
+    const devLabel  = walletLabels[dev.address]
     const rawTicker = metadata?.ticker || token.ticker || ''
     const ticker    = rawTicker.trim() ? rawTicker.toUpperCase() : 'NA'
     const name      = metadata?.name || token.name
@@ -178,6 +255,11 @@ export function TokenRow({
         } catch {
             toast.error('Failed to copy address')
         }
+    }
+
+    const onBlacklist = async () => {
+        await addToBlacklist(dev.address)
+        toast.success('Dev wallet blacklisted')
     }
 
     const MetaIcon =
@@ -301,10 +383,13 @@ export function TokenRow({
             <Separator className='opacity-50' />
 
             <div className='flex items-center gap-3 text-xs flex-wrap'>
-                {/* заголовок */}
+                {/* заголовок: иконка + label если есть, иначе "Dev" */}
                 <span className='inline-flex items-center gap-1 text-muted text-xs font-medium uppercase tracking-wide'>
                     <ChefHat className='h-3.5 w-3.5' />
-                    Dev
+                    {devLabel
+                        ? <span className='text-sky-300 uppercase'>{devLabel}</span>
+                        : 'Dev'
+                    }
                 </span>
 
                 <span className='inline-flex items-center gap-1' title='Total tokens created'>
@@ -325,6 +410,26 @@ export function TokenRow({
                         {dev.tokens.rate.toFixed(1)}%
                     </span>
                     <span className='text-muted font-mono'>rate</span>
+                </span>
+
+                {/* action buttons — после rate */}
+                <span className='ml-auto inline-flex items-center gap-1.5'>
+                    <button
+                        type='button'
+                        title={devLabel ? 'Edit label' : 'Set label'}
+                        onClick={() => setLabelModalOpen(true)}
+                        className='inline-flex items-center gap-0.5 text-sky-400 hover:text-sky-300 transition-colors'
+                    >
+                        <Tag className='h-3.5 w-3.5' />
+                    </button>
+                    <button
+                        type='button'
+                        title='Blacklist this dev wallet'
+                        onClick={() => void onBlacklist()}
+                        className='inline-flex items-center gap-0.5 text-red-500 hover:text-red-400 transition-colors'
+                    >
+                        <Ban className='h-3.5 w-3.5' />
+                    </button>
                 </span>
             </div>
 
@@ -349,6 +454,14 @@ export function TokenRow({
                     </div>
                 </>
             )}
+
+            {/* ── label modal ── */}
+            <LabelModal
+                open={labelModalOpen}
+                onClose={() => setLabelModalOpen(false)}
+                address={dev.address}
+                currentLabel={devLabel ?? ''}
+            />
         </div>
     )
 }
