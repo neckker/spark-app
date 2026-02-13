@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
 import { AXIOM_URL } from '@/lib/axiom'
+import { WS_URL, BACKEND_URL } from '@/config/env'
 import { useSettings } from '@/context/SettingsContext'
 
 type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
@@ -71,9 +72,6 @@ export type TokenCardModel = {
 
 type WsMessage = Record<string, unknown>
 
-const WS_URL = 'ws://127.0.0.1:8000/hub/ws'
-const HTTP_BASE = 'http://127.0.0.1:5000'
-
 const MAX_TOKENS = 10
 const META_TIMEOUT_MS = 1500
 const META_RETRY_ATTEMPTS = 5
@@ -83,7 +81,7 @@ const PRICE_PATH = '/hub/price'
 const PRICE_POLL_MS = 30_000
 
 const http = axios.create({
-    baseURL: HTTP_BASE,
+    baseURL: BACKEND_URL,
     timeout: META_TIMEOUT_MS,
     headers: { Accept: 'application/json' }
 })
