@@ -10,6 +10,10 @@ permissions:
 
 jobs:
   build:
+    env:
+      VITE_WS_URL: wss://spark.solyth.fun/hub/ws
+      VITE_BACKEND_URL: https://sparkx.solyth.fun
+      VITE_LICENSE_API: https://license.solyth.fun
     strategy:
       fail-fast: false
       matrix:
