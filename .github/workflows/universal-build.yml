@@ -50,3 +50,34 @@ jobs:
           releaseId: ${{ github.event.release.id }}
           args: ${{ matrix.args }}
           tauriScript: bun run tauri
+
+      - name: Upload portable Windows exe
+        if: matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            src-tauri/target/release/spark.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/spark.exe
+
+      - name: Zip macOS .app bundle (portable)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/spark.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "❌ .app not found at: $APP_PATH"
+            echo "Contents of bundle/macos:"
+            ls -la "src-tauri/target/universal-apple-darwin/release/bundle/macos" || true
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "spark_${{ github.event.release.tag_name }}_macos_universal.app.zip"
+
+      - name: Upload macOS portable .app.zip
+        if: matrix.os == 'macos-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            spark_${{ github.event.release.tag_name }}_macos_universal.app.zip
