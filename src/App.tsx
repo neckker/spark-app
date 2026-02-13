@@ -1,5 +1,6 @@
 import Header from '@/components/Header'
 import Toaster from '@/components/Toaster'
+// import { invoke } from '@tauri-apps/api/core'
 
 import { TokenRow } from '@/components/TokenRow'
 import EmptyTokens from '@/components/EmptyTokens'
@@ -15,6 +16,17 @@ export default function App() {
         solPriceUsd,
         solPriceStatus
     } = useSparkTokens()
+
+    // async function getDeviceId(): Promise<string | null> {
+    //     try {
+    //         const deviceId = await invoke<string>('get_device_id');
+    //         console.log('Device ID:', deviceId);
+    //         return deviceId;
+    //     } catch (error) {
+    //         console.error('Failed to get device ID:', error);
+    //         return null;
+    //     }
+    // }
 
     return (
         <div className='min-h-screen bg-main text-white'>
