@@ -14,9 +14,13 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
-import { useSettings } from '@/context/SettingsContext'
+import { useSettings, type Terminal } from '@/context/SettingsContext'
 import { Ban, Tag, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+import axiomIcon from '@/assets/terminals/axiom.svg'
+import padreIcon from '@/assets/terminals/padre.svg'
+import gmgnIcon  from '@/assets/terminals/gmgn.svg'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +29,7 @@ type Tab = 'main' | 'labels' | 'blacklist'
 type FieldKey = 'devMin' | 'devMax' | 'migrationPct'
 type Errors = Partial<Record<FieldKey, string>>
 
-// ─── helpers (unchanged from original) ───────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 const normalize = (v: string) => v.trim().replace(',', '.')
 
@@ -37,20 +41,13 @@ const parsePercent = (raw: string) => {
     return { ok: true as const, value: Math.max(0, Math.min(100, n)) }
 }
 
-// ─── SuffixInput (unchanged from original) ───────────────────────────────────
+// ─── SuffixInput ──────────────────────────────────────────────────────────────
 
 function SuffixInput({
-    value,
-    onChange,
-    suffix,
-    placeholder,
-    error
+    value, onChange, suffix, placeholder, error
 }: {
-    value: string
-    onChange: (v: string) => void
-    suffix: string
-    placeholder?: string
-    error?: boolean
+    value: string; onChange: (v: string) => void
+    suffix: string; placeholder?: string; error?: boolean
 }) {
     return (
         <div className='relative'>
@@ -58,17 +55,13 @@ function SuffixInput({
                 value={value}
                 placeholder={placeholder}
                 onChange={e => onChange(e.target.value)}
-                className={cn(
-                    'pr-14 bg-white/5 border-white/10',
-                    error && 'border-rose-500/60'
-                )}
+                className={cn('pr-14 bg-white/5 border-white/10', error && 'border-rose-500/60')}
             />
             <div className={cn(
                 'absolute right-0 top-0 h-full px-3',
                 'flex items-center text-white',
                 'text-xs font-semibold tracking-wide',
-                'border-l border-white/10',
-                'bg-white/5'
+                'border-l border-white/10 bg-white/5'
             )}>
                 {suffix}
             </div>
@@ -88,15 +81,11 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
         <div className='flex gap-1 p-1 rounded-lg bg-white/5 border border-white/8'>
             {tabs.map(t => (
                 <button
-                    key={t.id}
-                    type='button'
+                    key={t.id} type='button'
                     onClick={() => onChange(t.id)}
                     className={cn(
-                        'flex-1 rounded-md px-3 py-1.5',
-                        'text-xs font-medium transition-colors',
-                        active === t.id
-                            ? 'bg-white/10 text-white'
-                            : 'text-muted hover:text-zinc-300'
+                        'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                        active === t.id ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300'
                     )}
                 >
                     {t.label}
@@ -106,7 +95,54 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
     )
 }
 
-// ─── MainTab (содержимое оригинального диалога без изменений) ─────────────────
+// ─── TerminalPicker ───────────────────────────────────────────────────────────
+
+const TERMINALS: { id: Terminal; label: string; icon: string; url: string }[] = [
+    { id: 'axiom', label: 'Axiom',  icon: axiomIcon, url: 'axiom.trade' },
+    { id: 'padre', label: 'Padre',  icon: padreIcon, url: 'padre.gg' },
+    { id: 'gmgn',  label: 'GMGN',   icon: gmgnIcon,  url: 'gmgn.ai' },
+]
+
+function TerminalPicker({
+    value,
+    onChange,
+    disabled,
+}: {
+    value: Terminal
+    onChange: (t: Terminal) => void
+    disabled?: boolean
+}) {
+    return (
+        <div className='grid grid-cols-3 gap-2'>
+            {TERMINALS.map(t => {
+                const active = value === t.id
+                return (
+                    <button
+                        key={t.id}
+                        type='button'
+                        disabled={disabled}
+                        onClick={() => onChange(t.id)}
+                        className={cn(
+                            'flex flex-col items-center gap-1.5 rounded-lg py-3 px-2',
+                            'ring-1 transition-all duration-150',
+                            'text-xs font-medium',
+                            active
+                                ? 'bg-white/8 ring-white/25 text-white'
+                                : 'bg-white/3 ring-white/8 text-muted hover:bg-white/6 hover:text-zinc-300',
+                            disabled && 'opacity-40 cursor-not-allowed'
+                        )}
+                    >
+                        <img src={t.icon} alt={t.label} className='h-5 w-5' draggable={false} />
+                        <span>{t.label}</span>
+                        <span className='text-[10px] opacity-50 font-normal'>{t.url}</span>
+                    </button>
+                )
+            })}
+        </div>
+    )
+}
+
+// ─── MainTab ──────────────────────────────────────────────────────────────────
 
 function MainTab({
     settings,
@@ -127,14 +163,15 @@ function MainTab({
     const [devMax,        setDevMax]        = React.useState(String(settings.devMax))
     const [migration,     setMigration]     = React.useState(String(settings.migrationPct))
     const [openInBrowser, setOpenInBrowser] = React.useState(settings.openInBrowser)
+    const [terminal,      setTerminal]      = React.useState<Terminal>(settings.terminal)
     const [errors,        setErrors]        = React.useState<Errors>({})
 
-    // Re-sync when dialog re-opens (parent passes fresh settings)
     React.useEffect(() => {
         setDevMin(String(settings.devMin))
         setDevMax(String(settings.devMax))
         setMigration(String(settings.migrationPct))
         setOpenInBrowser(settings.openInBrowser)
+        setTerminal(settings.terminal)
         setErrors({})
     }, [settings])
 
@@ -159,7 +196,8 @@ function MainTab({
                 devMin:       min.ok ? min.value : 0,
                 devMax:       max.ok ? max.value : 100,
                 migrationPct: mig.ok ? mig.value : 0,
-                openInBrowser
+                openInBrowser,
+                terminal,
             }
         }
     }
@@ -182,13 +220,13 @@ function MainTab({
 
     return (
         <div className='space-y-3'>
+            {/* ── Filters ── */}
             <div className='space-y-4'>
                 <div>
                     <div className='font-medium text-white'>Filters</div>
                     <div className='text-sm text-muted mt-0.5'>Параметры фильтрации</div>
                 </div>
 
-                {/* DEV HOLDINGS */}
                 <div className='space-y-2'>
                     <Label>Dev Holdings %</Label>
                     <div className='grid grid-cols-2 gap-3'>
@@ -200,7 +238,6 @@ function MainTab({
                     )}
                 </div>
 
-                {/* MIGRATION */}
                 <div className='space-y-2'>
                     <Label>Dev Migration %</Label>
                     <SuffixInput value={migration} onChange={setMigration} suffix='FROM' placeholder='3' error={!!errors.migrationPct} />
@@ -212,12 +249,22 @@ function MainTab({
 
             <Separator />
 
-            <div className='flex items-center justify-between'>
-                <div>
-                    <div className='font-medium text-white'>Open token link in new tab</div>
-                    <div className='text-sm text-muted'>Открывать axiom.trade в браузере</div>
+            {/* ── Auto-open ── */}
+            <div className='space-y-3'>
+                <div className='flex items-center justify-between'>
+                    <div>
+                        <div className='font-medium text-white'>Auto-open token</div>
+                        <div className='text-sm text-muted'>Открывать токен при получении</div>
+                    </div>
+                    <Switch checked={openInBrowser} onCheckedChange={setOpenInBrowser} disabled={busy} />
                 </div>
-                <Switch checked={openInBrowser} onCheckedChange={setOpenInBrowser} disabled={busy} />
+
+                {/* терминал — активен только если включён авто-открытие */}
+                <TerminalPicker
+                    value={terminal}
+                    onChange={setTerminal}
+                    disabled={!openInBrowser || busy}
+                />
             </div>
 
             <Separator />
@@ -255,15 +302,11 @@ function LabelsTab() {
     return (
         <div className='space-y-1.5'>
             {entries.map(([addr, label]) => (
-                <div
-                    key={addr}
-                    className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'
-                >
+                <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
                     <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
                     <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
                     <button
-                        type='button'
-                        title='Remove label'
+                        type='button' title='Remove label'
                         onClick={() => { void removeWalletLabel(addr); toast.success('Label removed') }}
                         className='shrink-0 text-muted hover:text-rose-400 transition-colors'
                     >
@@ -296,17 +339,13 @@ function BlacklistTab() {
             {entries.map(addr => {
                 const label = walletLabels[addr]
                 return (
-                    <div
-                        key={addr}
-                        className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'
-                    >
+                    <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
                         {label && (
                             <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
                         )}
                         <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
                         <button
-                            type='button'
-                            title='Remove from blacklist'
+                            type='button' title='Remove from blacklist'
                             onClick={() => { void removeFromBlacklist(addr); toast.success('Removed from blacklist') }}
                             className='shrink-0 text-muted hover:text-rose-400 transition-colors'
                         >
@@ -324,13 +363,12 @@ function BlacklistTab() {
 export default function SettingsDialog({ children }: { children: React.ReactNode }) {
     const { settings, store, ready } = useSettings()
 
-    const [open,    setOpen]    = React.useState(false)
-    const [busy,    setBusy]    = React.useState(false)
-    const [tab,     setTab]     = React.useState<Tab>('main')
+    const [open, setOpen] = React.useState(false)
+    const [busy, setBusy] = React.useState(false)
+    const [tab,  setTab]  = React.useState<Tab>('main')
 
     const contentRef = React.useRef<HTMLDivElement | null>(null)
 
-    // Сбрасываем вкладку при открытии
     React.useEffect(() => {
         if (open) setTab('main')
     }, [open])
@@ -355,10 +393,8 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
                     <DialogDescription>Настройки приложения</DialogDescription>
                 </DialogHeader>
 
-                {/* Вкладки */}
                 <TabBar active={tab} onChange={setTab} />
 
-                {/* Контент */}
                 {tab === 'main' && (
                     <MainTab
                         settings={settings}

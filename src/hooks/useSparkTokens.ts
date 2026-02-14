@@ -2,7 +2,7 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
-import { AXIOM_URL } from '@/lib/refferal'
+import { terminalUrl } from '@/lib/refferal'
 import { WS_URL, BACKEND_URL } from '@/config/env'
 import { useSettings } from '@/context/SettingsContext'
 
@@ -175,6 +175,7 @@ export function useSparkTokens() {
     const { settings, isBlacklisted } = useSettings()
 
     const openInBrowserRef = useRef(settings.openInBrowser)
+    const terminalRef      = useRef(settings.terminal)
     const filtersRef = useRef({
         devMin:       settings.devMin,
         devMax:       settings.devMax,
@@ -182,6 +183,7 @@ export function useSparkTokens() {
     })
 
     useEffect(() => { openInBrowserRef.current = settings.openInBrowser }, [settings.openInBrowser])
+    useEffect(() => { terminalRef.current = settings.terminal },           [settings.terminal])
     useEffect(() => {
         filtersRef.current = {
             devMin:       settings.devMin,
@@ -371,7 +373,7 @@ export function useSparkTokens() {
             setTotalProcessed(totalProcessedRef.current)
 
             const id = newpair.address
-            if (openInBrowserRef.current) void openUrl(AXIOM_URL(id))
+            if (openInBrowserRef.current) void openUrl(terminalUrl(id, terminalRef.current))
 
             const lastTokens = normalizeLastTokens(last_tokens)
 

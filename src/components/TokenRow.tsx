@@ -291,7 +291,7 @@ export function TokenRow({
 
     const devholdCls =
         token.devhold >= 25 ? 'text-red-400' :
-        token.devhold >= 10  ? 'text-amber-300'   : 'text-emerald-400'
+        token.devhold >= 10  ? 'text-amber-300'   : 'text-emerald-300'
 
     return (
         <div className='rounded-xl px-3 py-2.5 bg-panel ring-1 ring-line space-y-2.5'>

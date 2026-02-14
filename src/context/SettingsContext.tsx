@@ -3,18 +3,22 @@ import { LazyStore } from '@tauri-apps/plugin-store'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
+export type Terminal = 'axiom' | 'padre' | 'gmgn'
+
 export interface Settings {
     devMin: number
     devMax: number
     migrationPct: number
     openInBrowser: boolean
+    terminal: Terminal
 }
 
 export const DEFAULT_SETTINGS: Settings = {
     devMin: 0,
     devMax: 100,
     migrationPct: 0,
-    openInBrowser: false
+    openInBrowser: false,
+    terminal: 'axiom',
 }
 
 /** address → human label (до 10 символов) */
@@ -58,12 +62,11 @@ const SettingsContext = createContext<SettingsCtx>({
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const [store]       = useState(() => new LazyStore('settings.json'))
-    const [settings, setSettings]     = useState<Settings>(DEFAULT_SETTINGS)
+    const [settings, setSettings]         = useState<Settings>(DEFAULT_SETTINGS)
     const [walletLabels, setWalletLabels] = useState<WalletLabels>({})
-    const [blacklist, setBlacklist]   = useState<Set<string>>(new Set())
-    const [ready, setReady]           = useState(false)
+    const [blacklist, setBlacklist]       = useState<Set<string>>(new Set())
+    const [ready, setReady]               = useState(false)
 
-    // Синхронный ref для isBlacklisted — читается из ws-замыкания
     const blacklistRef = useRef<Set<string>>(new Set())
     useEffect(() => { blacklistRef.current = blacklist }, [blacklist])
 
@@ -73,10 +76,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const devMax        = (await store.get<number>('devMax'))          ?? DEFAULT_SETTINGS.devMax
             const migrationPct  = (await store.get<number>('migrationPct'))    ?? DEFAULT_SETTINGS.migrationPct
             const openInBrowser = (await store.get<boolean>('openInBrowser'))  ?? DEFAULT_SETTINGS.openInBrowser
+            const terminal      = (await store.get<Terminal>('terminal'))      ?? DEFAULT_SETTINGS.terminal
             const rawLabels     = (await store.get<WalletLabels>('walletLabels')) ?? {}
             const rawBlacklist  = (await store.get<string[]>('blacklist'))        ?? []
 
-            setSettings({ devMin, devMax, migrationPct, openInBrowser })
+            setSettings({ devMin, devMax, migrationPct, openInBrowser, terminal })
             setWalletLabels(rawLabels)
             setBlacklist(new Set(rawBlacklist))
             setReady(true)
@@ -84,16 +88,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         load().catch(() => setReady(true))
     }, [store])
 
-    // ── settings ──────────────────────────────────────────────────────────────
-
     const patch = async (partial: Partial<Settings>) => {
         const next = { ...settings, ...partial }
         setSettings(next)
         for (const [k, v] of Object.entries(partial)) await store.set(k, v)
         await store.save()
     }
-
-    // ── wallet labels ─────────────────────────────────────────────────────────
 
     const setWalletLabel = async (address: string, label: string) => {
         const trimmed = label.trim().slice(0, 10)
@@ -110,8 +110,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         await store.set('walletLabels', next)
         await store.save()
     }
-
-    // ── blacklist ─────────────────────────────────────────────────────────────
 
     const addToBlacklist = async (address: string) => {
         const next = new Set(blacklist).add(address)
@@ -140,8 +138,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         </SettingsContext.Provider>
     )
 }
-
-// ─── hook ─────────────────────────────────────────────────────────────────────
 
 export function useSettings() {
     return useContext(SettingsContext)
