@@ -94,6 +94,22 @@ jobs:
           args: ${{ matrix.args }}
           tauriScript: bun run tauri
 
+      - name: Verify & staple macOS app
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/spark.app"
+
+          echo "🔎 codesign verify"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          echo "📌 stapling (attach notarization ticket)"
+          xcrun stapler staple -v "$APP_PATH"
+
+          echo "✅ Gatekeeper assessment"
+          spctl -a -vv "$APP_PATH"
+
       - name: Build and upload Tauri app (Windows)
         if: matrix.os == 'windows-latest'
         uses: tauri-apps/tauri-action@v0
