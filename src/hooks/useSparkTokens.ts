@@ -2,7 +2,7 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
-import { AXIOM_URL } from '@/lib/axiom'
+import { AXIOM_URL } from '@/lib/refferal'
 import { WS_URL, BACKEND_URL } from '@/config/env'
 import { useSettings } from '@/context/SettingsContext'
 
@@ -15,6 +15,7 @@ export type TokenEvent = {
     ticker: string
     devhold: number
     protocol: 'pump' | 'bonk' | string
+    market_cap: number          // SOL — новое поле
     metadata_url: string | null
     is_mayhem_mode: boolean
 }
@@ -30,7 +31,7 @@ export type DevInfo = {
     tokens: DevTokenStats
 }
 
-export type LastMigratedToken = {
+export type LastToken = {
     pair: string
     address: string
     name: string
@@ -39,16 +40,20 @@ export type LastMigratedToken = {
     supply: number
     created_at: number
     price: number
-    market_cap: number
+    market_cap: number          // текущий mcap в SOL
+    is_migrated: boolean
     total_fees: number | null
     is_dex_paid: boolean | null
     dex_paid_at: number | null
+    peak_mcap: number | null    // ATH mcap в SOL
+    ath_price: number | null
+    ath_time: number | null
 }
 
 export type WsTokenMessage = {
     newpair: TokenEvent
     dev: DevInfo
-    last_migrated: LastMigratedToken[]
+    last_tokens: LastToken[]    // переименовано
 }
 
 export type Metadata = {
@@ -65,7 +70,7 @@ export type TokenCardModel = {
     id: string
     token: TokenEvent
     dev: DevInfo
-    lastMigrated: LastMigratedToken[]
+    lastTokens: LastToken[]
     metadata: Metadata | null
     metaStatus: 'idle' | 'loading' | 'ready' | 'error'
 }
@@ -115,28 +120,32 @@ function isWsTokenMessage(x: unknown): x is WsTokenMessage {
         typeof t.rate !== 'number'
     ) return false
 
-    if (!Array.isArray(v.last_migrated)) return false
+    if (!Array.isArray(v.last_tokens)) return false
     return true
 }
 
-function normalizeLastMigrated(raw: unknown[]): LastMigratedToken[] {
+function normalizeLastTokens(raw: unknown[]): LastToken[] {
     return raw
         .filter(item => item && typeof item === 'object')
         .map(item => {
             const r = item as Record<string, unknown>
             return {
-                pair:        typeof r.pair === 'string' ? r.pair : '',
+                pair:        typeof r.pair === 'string'    ? r.pair    : '',
                 address:     typeof r.address === 'string' ? r.address : '',
-                name:        typeof r.name === 'string' ? r.name : '',
-                image:       typeof r.image === 'string' ? r.image : '',
-                ticker:      typeof r.ticker === 'string' ? r.ticker : '',
-                supply:      typeof r.supply === 'number' ? r.supply : 0,
-                created_at:  typeof r.created_at === 'number' ? r.created_at : 0,
-                price:       typeof r.price === 'number' ? r.price : 0,
-                market_cap:  typeof r.market_cap === 'number' ? r.market_cap : 0,
-                total_fees:  typeof r.total_fees === 'number' ? r.total_fees : null,
+                name:        typeof r.name === 'string'    ? r.name    : '',
+                image:       typeof r.image === 'string'   ? r.image   : '',
+                ticker:      typeof r.ticker === 'string'  ? r.ticker  : '',
+                supply:      typeof r.supply === 'number'  ? r.supply  : 0,
+                created_at:  typeof r.created_at === 'number'  ? r.created_at  : 0,
+                price:       typeof r.price === 'number'   ? r.price   : 0,
+                market_cap:  typeof r.market_cap === 'number'  ? r.market_cap  : 0,
+                is_migrated: typeof r.is_migrated === 'boolean' ? r.is_migrated : false,
+                total_fees:  typeof r.total_fees === 'number'  ? r.total_fees  : null,
                 is_dex_paid: typeof r.is_dex_paid === 'boolean' ? r.is_dex_paid : null,
-                dex_paid_at: typeof r.dex_paid_at === 'number' ? r.dex_paid_at : null,
+                dex_paid_at: typeof r.dex_paid_at === 'number'  ? r.dex_paid_at : null,
+                peak_mcap:   typeof r.peak_mcap === 'number'    ? r.peak_mcap   : null,
+                ath_price:   typeof r.ath_price === 'number'    ? r.ath_price   : null,
+                ath_time:    typeof r.ath_time === 'number'     ? r.ath_time    : null,
             }
         })
         .slice(0, 3)
@@ -150,11 +159,11 @@ function normalizeMetadata(raw: any): Metadata | null {
             typeof raw.symbol === 'string' ? raw.symbol :
             typeof raw.ticker === 'string' ? raw.ticker : null,
         image_url:
-            typeof raw.image === 'string' ? raw.image :
+            typeof raw.image === 'string'     ? raw.image :
             typeof raw.image_url === 'string' ? raw.image_url : null,
         telegram:  typeof raw.telegram === 'string' ? raw.telegram : null,
         website:
-            typeof raw.website === 'string' ? raw.website :
+            typeof raw.website === 'string'      ? raw.website :
             typeof raw.external_url === 'string' ? raw.external_url : null,
         twitter:   typeof raw.twitter === 'string' ? raw.twitter : null,
     }
@@ -165,15 +174,14 @@ function normalizeMetadata(raw: any): Metadata | null {
 export function useSparkTokens() {
     const { settings, isBlacklisted } = useSettings()
 
-    // Refs — замыкание ws.onmessage всегда видит свежие значения
-    const openInBrowserRef  = useRef(settings.openInBrowser)
+    const openInBrowserRef = useRef(settings.openInBrowser)
     const filtersRef = useRef({
         devMin:       settings.devMin,
         devMax:       settings.devMax,
         migrationPct: settings.migrationPct,
     })
 
-    useEffect(() => { openInBrowserRef.current = settings.openInBrowser },  [settings.openInBrowser])
+    useEffect(() => { openInBrowserRef.current = settings.openInBrowser }, [settings.openInBrowser])
     useEffect(() => {
         filtersRef.current = {
             devMin:       settings.devMin,
@@ -182,7 +190,6 @@ export function useSparkTokens() {
         }
     }, [settings.devMin, settings.devMax, settings.migrationPct])
 
-    // isBlacklisted уже читает из ref внутри контекста — передаём напрямую
     const isBlacklistedRef = useRef(isBlacklisted)
     useEffect(() => { isBlacklistedRef.current = isBlacklisted }, [isBlacklisted])
 
@@ -238,11 +245,10 @@ export function useSparkTokens() {
         priceAbortRef.current = ctrl
         if (!silent) setSolPriceStatus('loading')
         try {
-            const res = await http.get(PRICE_PATH, { signal: ctrl.signal })
+            const res  = await http.get(PRICE_PATH, { signal: ctrl.signal })
             const data = res.data as { ok?: boolean; price?: number }
             if (!data || data.ok !== true || typeof data.price !== 'number') {
-                setSolPriceStatus('error')
-                return
+                setSolPriceStatus('error'); return
             }
             setSolPriceUsd(data.price)
             setSolPriceStatus('ready')
@@ -274,7 +280,6 @@ export function useSparkTokens() {
             .then(res => {
                 if (ctrl.signal.aborted) return
                 const data = res.data
-
                 if (data && typeof data === 'object' && data.ok === false) {
                     if (attemptsLeft > 0) {
                         const timer = window.setTimeout(() => {
@@ -288,7 +293,6 @@ export function useSparkTokens() {
                     }
                     return
                 }
-
                 const meta = normalizeMetadata(data)
                 setTokens(prev => prev.map(x => x.id === tokenId
                     ? { ...x, metadata: meta, metaStatus: meta ? 'ready' : 'error' }
@@ -298,12 +302,10 @@ export function useSparkTokens() {
             })
             .catch((err: any) => {
                 if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || ctrl.signal.aborted) return
-
                 const isRetryable =
                     err?.code === 'ECONNABORTED' ||
-                    err?.code === 'ERR_NETWORK' ||
+                    err?.code === 'ERR_NETWORK'  ||
                     err?.message === 'Network Error'
-
                 if (isRetryable && attemptsLeft > 0) {
                     const timer = window.setTimeout(() => {
                         metaRetryTimersRef.current.delete(tokenId)
@@ -312,7 +314,6 @@ export function useSparkTokens() {
                     metaRetryTimersRef.current.set(tokenId, timer)
                     return
                 }
-
                 setTokens(prev => prev.map(x => x.id === tokenId ? { ...x, metadata: null, metaStatus: 'error' } : x))
                 metaInflightRef.current.delete(tokenId)
             })
@@ -332,20 +333,17 @@ export function useSparkTokens() {
 
         ws.onopen  = () => setStatus('open')
         ws.onerror = () => setStatus('error')
-
         ws.onclose = () => {
             setStatus('closed')
-            const base = Math.min(10_000, 500 * 2 ** attempt)
+            const base   = Math.min(10_000, 500 * 2 ** attempt)
             const jitter = Math.floor(Math.random() * 250)
             reconnectRef.current = window.setTimeout(() => connect(attempt + 1), base + jitter)
         }
 
         ws.onmessage = evt => {
             if (typeof evt.data !== 'string') return
-
             let parsed: unknown
             try { parsed = JSON.parse(evt.data) } catch { return }
-
             if (typeof parsed !== 'object' || parsed === null) return
             const msg = parsed as WsMessage
 
@@ -362,30 +360,20 @@ export function useSparkTokens() {
 
             if (!isWsTokenMessage(parsed)) return
 
-            const { newpair, dev, last_migrated } = parsed
+            const { newpair, dev, last_tokens } = parsed
 
-            // ── фильтры ──────────────────────────────────────────────────────
             const { devMin, devMax, migrationPct } = filtersRef.current
-
-            // devhold вне диапазона
             if (newpair.devhold < devMin || newpair.devhold > devMax) return
-
-            // migration rate ниже порога
             if (dev.tokens.rate < migrationPct) return
-
-            // кошелёк в чёрном списке
             if (isBlacklistedRef.current(dev.address)) return
 
             totalProcessedRef.current += 1
             setTotalProcessed(totalProcessedRef.current)
 
             const id = newpair.address
+            if (openInBrowserRef.current) void openUrl(AXIOM_URL(id))
 
-            if (openInBrowserRef.current) {
-                void openUrl(AXIOM_URL(id))
-            }
-
-            const lastMigrated = normalizeLastMigrated(last_migrated)
+            const lastTokens = normalizeLastTokens(last_tokens)
 
             setTokens(prevTokens => {
                 const rest = prevTokens.filter(x => x.id !== id)
@@ -393,7 +381,7 @@ export function useSparkTokens() {
                     id,
                     token: newpair,
                     dev,
-                    lastMigrated,
+                    lastTokens,
                     metadata: null,
                     metaStatus: newpair.metadata_url && newpair.metadata_url.length ? 'loading' : 'error'
                 }

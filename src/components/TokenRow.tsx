@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 
-import { AXIOM_URL } from '@/lib/axiom'
-import { Badge } from '@/components/ui/badge'
+import { AXIOM_URL } from '@/lib/refferal'
 import { Separator } from '@/components/ui/separator'
 import {
     Dialog, DialogContent, DialogHeader,
@@ -12,10 +11,11 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-import pumpIcon   from '@/assets/pump.svg'
-import mayhemIcon from '@/assets/mayhem.svg'
 import bonkIcon   from '@/assets/bonk.svg'
-import axiomIcon  from '@/assets/axiom.svg'
+import pumpIcon   from '@/assets/pump.svg'
+
+import mayhemIcon from '@/assets/mayhem.svg'
+import axiomIcon  from '@/assets/terminals/axiom.svg'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -23,10 +23,10 @@ import {
     Globe, Send, TriangleAlert, Twitter,
     ChefHat, Coins, GitMerge, Percent,
     BadgeDollarSign, ChartNoAxesCombined, HandCoins,
-    Tag, Ban, Clock
+    Tag, Ban, Clock, Crown, Zap
 } from 'lucide-react'
 
-import type { TokenCardModel, LastMigratedToken } from '@/hooks/useSparkTokens'
+import type { TokenCardModel, LastToken } from '@/hooks/useSparkTokens'
 import { useSettings } from '@/context/SettingsContext'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -47,14 +47,10 @@ function fmtSol(sol: number | null): string {
     return sol.toFixed(2)
 }
 
-/** date-fns без суффикса "ago" */
 function fmtAgo(tsMs: number): string {
     if (!tsMs) return ''
-    try {
-        return formatDistanceToNow(new Date(tsMs), { addSuffix: false })
-    } catch {
-        return ''
-    }
+    try { return formatDistanceToNow(new Date(tsMs), { addSuffix: false }) }
+    catch { return '' }
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -131,22 +127,23 @@ function LabelModal({
     )
 }
 
-// ─── MigratedTokenCard ───────────────────────────────────────────────────────
+// ─── LastTokenCard ────────────────────────────────────────────────────────────
 
-function MigratedTokenCard({
+function LastTokenCard({
     t,
-    solPrice
+    solPrice,
 }: {
-    t: LastMigratedToken
+    t: LastToken
     solPrice: number | null
 }) {
-    const mcUsd   = solPrice && t.market_cap > 0 ? t.market_cap * solPrice : null
-    const agoText = t.created_at ? fmtAgo(t.created_at) : ''
+    const mcUsd    = solPrice && t.market_cap > 0               ? t.market_cap * solPrice : null
+    const athMcUsd = t.peak_mcap != null && t.peak_mcap > 0     ? t.peak_mcap             : null
+    const agoText  = t.created_at ? fmtAgo(t.created_at) : ''
+    const isMigrated = t.is_migrated === true
 
     const dexCls =
         t.is_dex_paid === true  ? 'text-emerald-400' :
-        t.is_dex_paid === false ? 'text-red-400' :
-                                  'text-zinc-600'
+        t.is_dex_paid === false ? 'text-red-400'     : 'text-zinc-600'
 
     return (
         <a
@@ -162,7 +159,7 @@ function MigratedTokenCard({
             ].join(' ')}
         >
             {/* image */}
-            <Avatar className='h-8 w-8 rounded-lg'>
+            <Avatar className='h-8 w-8 rounded-lg shrink-0'>
                 <AvatarImage src={t.image} className='rounded-lg object-cover' />
                 <AvatarFallback className='rounded-lg bg-white/5 text-xs'>
                     {t.ticker.slice(0, 2) || '??'}
@@ -170,17 +167,20 @@ function MigratedTokenCard({
             </Avatar>
 
             <div className='min-w-0 flex-1'>
-                {/* ticker + name */}
-                <div className='flex items-baseline gap-1.5 truncate'>
-                    <span className='text-sm font-semibold text-zinc-100'>
+                {/* ticker + name + migrated crown */}
+                <div className='flex items-center gap-1.5 min-w-0'>
+                    <span className='text-sm font-semibold text-zinc-100 shrink-0'>
                         {t.ticker.toUpperCase()}
                     </span>
-                    <span className='text-sm font-normal text-muted hover:text-muted/80 transition-colors truncate'>
+                    <span className='text-sm font-normal text-muted truncate'>
                         {t.name}
                     </span>
+                    {isMigrated && (
+                        <Crown className='h-3.5 w-3.5 text-amber-400 shrink-0 ml-auto' />
+                    )}
                 </div>
 
-                {/* date + mcap + fees + dex */}
+                {/* date + mcap + ath mcap + fees + dex */}
                 <div className='flex items-center space-x-2 mt-1 flex-wrap'>
                     {agoText && (
                         <span className='inline-flex items-center gap-1 text-xs text-white/80'>
@@ -189,11 +189,17 @@ function MigratedTokenCard({
                         </span>
                     )}
 
+                    {/* current mcap + ath mcap рядом */}
                     {mcUsd !== null && (
                         <span className='inline-flex items-center gap-1 text-xs text-white/80'>
-                            {/* <span className='text-muted'>MC</span> */}
                             <ChartNoAxesCombined className='size-4' />
                             <span className='tabular-nums text-emerald-300 font-medium'>{fmtUsdCap(mcUsd)}</span>
+                            {athMcUsd !== null && (
+                                <>
+                                    <Zap className='size-3.5 text-white/80' />
+                                    <span className='tabular-nums text-amber-300 font-medium'>{fmtUsdCap(athMcUsd)}</span>
+                                </>
+                            )}
                         </span>
                     )}
 
@@ -225,7 +231,7 @@ export function TokenRow({
     item: TokenCardModel
     solPriceUsd: number | null
 }) {
-    const { token, dev, lastMigrated, metadata, metaStatus } = item
+    const { token, dev, lastTokens, metadata, metaStatus } = item
     const { walletLabels, addToBlacklist } = useSettings()
 
     const [labelModalOpen, setLabelModalOpen] = useState(false)
@@ -235,6 +241,11 @@ export function TokenRow({
     const ticker    = rawTicker.trim() ? rawTicker.toUpperCase() : 'NA'
     const name      = metadata?.name || token.name
     const avatarUrl = metadata?.image_url ? safeUrl(metadata.image_url) : ''
+
+    // mcap нового токена в USD
+    const newMcUsd = solPriceUsd && token.market_cap > 0
+        ? token.market_cap * solPriceUsd
+        : null
 
     const links = useMemo(() => ({
         website:  metadata?.website  ? safeUrl(metadata.website)  : '',
@@ -274,11 +285,13 @@ export function TokenRow({
 
     const iconLinkCls = 'hover:text-zinc-200 transition-colors'
 
-    // rate: < 5% красный, 5–25% жёлтый, > 25% зелёный
     const rateCls =
         dev.tokens.rate >= 25 ? 'text-emerald-400' :
-        dev.tokens.rate >= 5  ? 'text-amber-300'   :
-                                'text-red-400'
+        dev.tokens.rate >= 5  ? 'text-amber-300'   : 'text-red-400'
+
+    const devholdCls =
+        token.devhold >= 25 ? 'text-red-400' :
+        token.devhold >= 10  ? 'text-amber-300'   : 'text-emerald-400'
 
     return (
         <div className='rounded-xl px-3 py-2.5 bg-panel ring-1 ring-line space-y-2.5'>
@@ -308,6 +321,7 @@ export function TokenRow({
                     )}
                 </div>
 
+                {/* center: ticker + links */}
                 <div className='min-w-0 flex-1'>
                     <div className='min-w-0 flex-1 truncate text-sm font-semibold'>
                         {ticker}{' '}
@@ -365,17 +379,21 @@ export function TokenRow({
                                 metaCls
                             ].join(' ')} />
                         )}
-
-                        {/* devhold — в той же строке */}
-                        <Badge variant='secondary' className={[
-                            'ml-1 h-5 px-2',
-                            'text-[11px] tabular-nums',
-                            'bg-zinc-900/70 text-zinc-200',
-                            'ring-1 ring-white/10'
-                        ].join(' ')} title='Dev hold'>
-                            DEV {token.devhold}%
-                        </Badge>
                     </div>
+                </div>
+
+                {/* right: mcap + devhold — параллельно аватару и тикеру */}
+                <div className='shrink-0 flex flex-col items-end gap-1.5'>
+                    {newMcUsd !== null && (
+                        <span className='inline-flex items-center gap-1 text-xs text-muted'>
+                            <ChartNoAxesCombined className='size-3.5' />
+                            <span className='tabular-nums text-emerald-300 font-semibold'>{fmtUsdCap(newMcUsd)}</span>
+                        </span>
+                    )}
+                    <span className='inline-flex items-center gap-1 text-xs text-muted'>
+                        <ChefHat className='size-3.5' />
+                        <span className={`tabular-nums font-semibold ${devholdCls}`}>{token.devhold}%</span>
+                    </span>
                 </div>
             </div>
 
@@ -383,7 +401,6 @@ export function TokenRow({
             <Separator className='opacity-50' />
 
             <div className='flex items-center gap-3 text-xs flex-wrap'>
-                {/* заголовок: иконка + label если есть, иначе "Dev" */}
                 <span className='inline-flex items-center gap-1 text-muted text-xs font-medium uppercase tracking-wide'>
                     <ChefHat className='h-3.5 w-3.5' />
                     {devLabel
@@ -412,7 +429,6 @@ export function TokenRow({
                     <span className='text-muted font-mono'>rate</span>
                 </span>
 
-                {/* action buttons — после rate */}
                 <span className='ml-auto inline-flex items-center gap-1.5'>
                     <button
                         type='button'
@@ -433,18 +449,18 @@ export function TokenRow({
                 </span>
             </div>
 
-            {/* ── last migrated ── */}
-            {lastMigrated.length > 0 && (
+            {/* ── last tokens ── */}
+            {lastTokens.length > 0 && (
                 <>
                     <Separator className='opacity-50' />
 
                     <div className='space-y-1.5'>
                         <div className='text-[11px] text-muted font-medium uppercase tracking-wide'>
-                            Last migrated
+                            Last tokens
                         </div>
                         <div className='flex flex-col gap-2'>
-                            {lastMigrated.map(t => (
-                                <MigratedTokenCard
+                            {lastTokens.map(t => (
+                                <LastTokenCard
                                     key={t.address || t.pair}
                                     t={t}
                                     solPrice={solPriceUsd}
