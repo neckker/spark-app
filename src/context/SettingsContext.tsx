@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
+import React, { createContext, useContext, useEffect, useCallback, useState } from 'react'
 import { LazyStore } from '@tauri-apps/plugin-store'
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -67,9 +67,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const [blacklist, setBlacklist]       = useState<Set<string>>(new Set())
     const [ready, setReady]               = useState(false)
 
-    const blacklistRef = useRef<Set<string>>(new Set())
-    useEffect(() => { blacklistRef.current = blacklist }, [blacklist])
-
     useEffect(() => {
         async function load() {
             const devMin        = (await store.get<number>('devMin'))          ?? DEFAULT_SETTINGS.devMin
@@ -126,7 +123,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         await store.save()
     }
 
-    const isBlacklisted = (address: string) => blacklistRef.current.has(address)
+    const isBlacklisted = useCallback(
+        (address: string) => blacklist.has(address),
+        [blacklist]
+    )
 
     return (
         <SettingsContext.Provider value={{

@@ -15,8 +15,9 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import { useSettings, type Terminal } from '@/context/SettingsContext'
-import { Ban, Tag, X } from 'lucide-react'
+import { Ban, Tag, X, KeyRound, RefreshCw, Zap, ShieldCheck, ShieldAlert, Clock4 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useAuth } from '@/context/AuthContext'
 
 import axiomIcon from '@/assets/terminals/axiom.svg'
 import padreIcon from '@/assets/terminals/padre.svg'
@@ -24,7 +25,7 @@ import gmgnIcon  from '@/assets/terminals/gmgn.svg'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'main' | 'labels' | 'blacklist'
+type Tab = 'main' | 'access' | 'labels' | 'blacklist'
 
 type FieldKey = 'devMin' | 'devMax' | 'migrationPct'
 type Errors = Partial<Record<FieldKey, string>>
@@ -74,6 +75,7 @@ function SuffixInput({
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
     const tabs: { id: Tab; label: string }[] = [
         { id: 'main',      label: 'Main' },
+        { id: 'access',    label: 'Access' },
         { id: 'labels',    label: 'Labels' },
         { id: 'blacklist', label: 'Blacklist' },
     ]
@@ -134,7 +136,7 @@ function TerminalPicker({
                     >
                         <img src={t.icon} alt={t.label} className='h-5 w-5' draggable={false} />
                         <span>{t.label}</span>
-                        <span className='text-[10px] opacity-50 font-normal'>{t.url}</span>
+                        <span className='text-[10px] text-muted font-normal'>{t.url}</span>
                     </button>
                 )
             })}
@@ -224,7 +226,7 @@ function MainTab({
             <div className='space-y-4'>
                 <div>
                     <div className='font-medium text-white'>Filters</div>
-                    <div className='text-sm text-muted mt-0.5'>Параметры фильтрации</div>
+                    <div className='text-sm text-muted mt-0.5'>Filter params</div>
                 </div>
 
                 <div className='space-y-2'>
@@ -254,7 +256,7 @@ function MainTab({
                 <div className='flex items-center justify-between'>
                     <div>
                         <div className='font-medium text-white'>Auto-open token</div>
-                        <div className='text-sm text-muted'>Открывать токен при получении</div>
+                        <div className='text-sm text-muted'>Open token in a new tab</div>
                     </div>
                     <Switch checked={openInBrowser} onCheckedChange={setOpenInBrowser} disabled={busy} />
                 </div>
@@ -283,6 +285,136 @@ function MainTab({
     )
 }
 
+// ─── AccessTab ────────────────────────────────────────────────────────────────
+
+function AccessTab() {
+    const { status, licenseKey, expiresAt, errorMessage } = useAuth()
+
+    const timeLeft = React.useMemo(() => {
+        if (!expiresAt) return null
+        const msLeft = expiresAt - Date.now()
+        if (msLeft <= 0) return 'Expired'
+
+        const days    = Math.floor(msLeft / (1000 * 60 * 60 * 24))
+        const hours   = Math.floor((msLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+        const minutes = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60))
+
+        if (days >= 1)  return `${days}d ${hours}h`
+        if (hours >= 1) return `${hours}h ${minutes}m`
+        return `${minutes}m`
+    }, [expiresAt])
+
+    // Прогресс: от момента проверки до expires_at
+    // Берём полный срок из expiresAt, сравниваем с текущим временем
+    const progressPct = React.useMemo(() => {
+        if (!expiresAt) return 0
+        const msLeft  = expiresAt - Date.now()
+        if (msLeft <= 0) return 0
+
+        // Определяем "полный период" по диапазонам
+        const days = msLeft / (1000 * 60 * 60 * 24)
+        const total =
+            days > 300 ? 365 * 24 * 60 * 60 * 1000 :  // год
+            days > 25  ?  30 * 24 * 60 * 60 * 1000 :  // месяц
+            days > 5   ?   7 * 24 * 60 * 60 * 1000 :  // неделя
+            days > 1   ?   3 * 24 * 60 * 60 * 1000 :  // 3 дня
+                           1 * 24 * 60 * 60 * 1000     // остальное (часы/минуты)
+
+        return Math.max(0, Math.min(100, (msLeft / total) * 100))
+    }, [expiresAt])
+
+    const isActive = status === 'active'
+
+    const statusConfig = {
+        active:          { icon: ShieldCheck, color: 'text-emerald-400', label: 'Active'          },
+        checking:        { icon: RefreshCw,   color: 'text-zinc-400',    label: 'Checking…'       },
+        expired:         { icon: ShieldAlert, color: 'text-amber-400',   label: 'Expired'         },
+        revoked:         { icon: ShieldAlert, color: 'text-rose-400',    label: 'Revoked'         },
+        device_mismatch: { icon: ShieldAlert, color: 'text-rose-400',    label: 'Device mismatch' },
+        not_activated:   { icon: ShieldAlert, color: 'text-amber-400',   label: 'Not activated'   },
+        no_license:      { icon: ShieldAlert, color: 'text-zinc-400',    label: 'No license'      },
+        error:           { icon: ShieldAlert, color: 'text-rose-400',    label: 'Error'           },
+        idle:            { icon: ShieldAlert, color: 'text-zinc-400',    label: 'Unknown'         },
+    } as const
+
+    const cfg     = statusConfig[status] ?? statusConfig.idle
+    const CfgIcon = cfg.icon
+
+    // Цвет прогресс-бара — желтеет когда мало времени
+    const progressColor =
+        progressPct > 30 ? 'bg-emerald-500' :
+        progressPct > 10 ? 'bg-amber-400'   : 'bg-rose-500'
+
+    return (
+        <div className='space-y-4'>
+
+            {/* ── Status card ── */}
+            <div className='rounded-lg bg-white/3 ring-1 ring-white/8 p-3.5 space-y-3'>
+                <div className='flex items-center justify-between'>
+                    <div className='flex items-center gap-2'>
+                        <CfgIcon className={cn(
+                            'h-4 w-4',
+                            cfg.color,
+                            status === 'checking' && 'animate-spin'
+                        )} />
+                        <span className={cn('text-sm font-medium', cfg.color)}>
+                            {cfg.label}
+                        </span>
+                    </div>
+
+                    {isActive && timeLeft && (
+                        <span className='inline-flex items-center gap-1 text-xs text-muted'>
+                            <Clock4 className='h-3.5 w-3.5' />
+                            <span className='tabular-nums text-white font-medium'>{timeLeft}</span>
+                            <span className='text-muted'>left</span>
+                        </span>
+                    )}
+                </div>
+
+                {isActive && (
+                    <div className='h-1 rounded-full bg-white/8 overflow-hidden'>
+                        <div
+                            className={cn('h-full rounded-full transition-all duration-500', progressColor)}
+                            style={{ width: `${progressPct}%` }}
+                        />
+                    </div>
+                )}
+
+                {licenseKey && (
+                    <div className='flex items-center gap-2'>
+                        <KeyRound className='h-3.5 w-3.5 text-muted shrink-0' />
+                        <span className='font-mono text-xs text-muted truncate'>
+                            {licenseKey}
+                        </span>
+                    </div>
+                )}
+
+                {errorMessage && !isActive && (
+                    <p className='text-xs text-rose-300'>{errorMessage}</p>
+                )}
+            </div>
+
+            {/* ── Renew ── */}
+            <a
+                href='https://t.me/neckkero'
+                target='_blank'
+                rel='noreferrer'
+                className={cn(
+                    'flex items-center justify-center gap-2 w-full',
+                    'rounded-md px-4 py-2 text-sm font-medium',
+                    'bg-white/5 ring-1 ring-white/10',
+                    'hover:bg-white/8 hover:ring-white/20',
+                    'transition-colors text-white'
+                )}
+            >
+                <Zap className='h-4 w-4 text-amber-400' />
+                Renew access
+            </a>
+
+        </div>
+    )
+}
+
 // ─── LabelsTab ────────────────────────────────────────────────────────────────
 
 function LabelsTab() {
@@ -300,7 +432,7 @@ function LabelsTab() {
     }
 
     return (
-        <div className='space-y-1.5'>
+        <div className='max-h-80 overflow-y-auto px-1 py-2 space-y-1.5'>
             {entries.map(([addr, label]) => (
                 <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
                     <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
@@ -335,7 +467,7 @@ function BlacklistTab() {
     }
 
     return (
-        <div className='space-y-1.5'>
+        <div className='max-h-80 overflow-y-auto px-1 py-2 space-y-1.5'>
             {entries.map(addr => {
                 const label = walletLabels[addr]
                 return (
@@ -390,7 +522,7 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
             >
                 <DialogHeader>
                     <DialogTitle>Settings</DialogTitle>
-                    <DialogDescription>Настройки приложения</DialogDescription>
+                    <DialogDescription>App settings</DialogDescription>
                 </DialogHeader>
 
                 <TabBar active={tab} onChange={setTab} />
@@ -404,6 +536,7 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
                         onSaved={() => setOpen(false)}
                     />
                 )}
+                {tab === 'access'    && <AccessTab />}
                 {tab === 'labels'    && <LabelsTab />}
                 {tab === 'blacklist' && <BlacklistTab />}
             </DialogContent>

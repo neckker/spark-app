@@ -232,7 +232,7 @@ export function TokenRow({
     solPriceUsd: number | null
 }) {
     const { token, dev, lastTokens, metadata, metaStatus } = item
-    const { walletLabels, addToBlacklist } = useSettings()
+    const { walletLabels, addToBlacklist, isBlacklisted } = useSettings()
 
     const [labelModalOpen, setLabelModalOpen] = useState(false)
 
@@ -269,6 +269,10 @@ export function TokenRow({
     }
 
     const onBlacklist = async () => {
+        if (isBlacklisted(dev.address)) {
+            toast.error('Already blacklisted')
+            return
+        }
         await addToBlacklist(dev.address)
         toast.success('Dev wallet blacklisted')
     }
@@ -403,9 +407,11 @@ export function TokenRow({
             <div className='flex items-center gap-3 text-xs flex-wrap'>
                 <span className='inline-flex items-center gap-1 text-muted text-xs font-medium uppercase tracking-wide'>
                     <ChefHat className='h-3.5 w-3.5' />
-                    {devLabel
-                        ? <span className='text-sky-300 uppercase'>{devLabel}</span>
-                        : 'Dev'
+                    {isBlacklisted(dev.address)
+                        ? <span className='text-rose-400 uppercase'>Banned</span>
+                        : devLabel
+                            ? <span className='text-sky-300 uppercase'>{devLabel}</span>
+                            : 'DEV'
                     }
                 </span>
 
