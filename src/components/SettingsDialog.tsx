@@ -166,6 +166,7 @@ function MainTab({
     const [migration,     setMigration]     = React.useState(String(settings.migrationPct))
     const [openInBrowser, setOpenInBrowser] = React.useState(settings.openInBrowser)
     const [terminal,      setTerminal]      = React.useState<Terminal>(settings.terminal)
+    const [uiScale,       setUIScale]       = React.useState(settings.uiScale)
     const [errors,        setErrors]        = React.useState<Errors>({})
 
     React.useEffect(() => {
@@ -174,6 +175,7 @@ function MainTab({
         setMigration(String(settings.migrationPct))
         setOpenInBrowser(settings.openInBrowser)
         setTerminal(settings.terminal)
+        setUIScale(settings.uiScale)
         setErrors({})
     }, [settings])
 
@@ -200,6 +202,7 @@ function MainTab({
                 migrationPct: mig.ok ? mig.value : 0,
                 openInBrowser,
                 terminal,
+                uiScale,
             }
         }
     }
@@ -267,6 +270,41 @@ function MainTab({
                     onChange={setTerminal}
                     disabled={!openInBrowser || busy}
                 />
+            </div>
+
+            <Separator />
+
+            {/* ── UI Scale ── */}
+            <div className='space-y-3'>
+                <div>
+                    <div className='font-medium text-white'>UI Scale</div>
+                    <div className='text-sm text-muted'>Adjust interface size</div>
+                </div>
+                
+                <div className='space-y-2.5'>
+                    <div className='flex items-center justify-between text-sm'>
+                        <span className='text-muted'>Scale</span>
+                        <span className='text-white font-medium tabular-nums'>{uiScale}%</span>
+                    </div>
+                    <div className='relative'>
+                        <input
+                            type='range'
+                            min='75'
+                            max='150'
+                            step='5'
+                            value={uiScale}
+                            onChange={e => setUIScale(Number(e.target.value))}
+                            disabled={busy}
+                            className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
+                        />
+                    </div>
+                    <div className='relative flex text-xs text-muted tabular-nums h-4'>
+                        <span className='absolute left-0'>75%</span>
+                        <span className='absolute left-1/3 -translate-x-1/2'>100%</span>
+                        <span className='absolute left-2/3 -translate-x-1/2'>125%</span>
+                        <span className='absolute right-0'>150%</span>
+                    </div>
+                </div>
             </div>
 
             <Separator />
@@ -410,7 +448,6 @@ function AccessTab() {
                 <Zap className='h-4 w-4 text-amber-400' />
                 Renew access
             </a>
-
         </div>
     )
 }

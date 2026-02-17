@@ -11,6 +11,7 @@ export interface Settings {
     migrationPct: number
     openInBrowser: boolean
     terminal: Terminal
+    uiScale: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
     migrationPct: 0,
     openInBrowser: false,
     terminal: 'axiom',
+    uiScale: 100,
 }
 
 /** address → human label (до 10 символов) */
@@ -74,10 +76,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const migrationPct  = (await store.get<number>('migrationPct'))    ?? DEFAULT_SETTINGS.migrationPct
             const openInBrowser = (await store.get<boolean>('openInBrowser'))  ?? DEFAULT_SETTINGS.openInBrowser
             const terminal      = (await store.get<Terminal>('terminal'))      ?? DEFAULT_SETTINGS.terminal
+            const uiScale       = (await store.get<number>('uiScale'))         ?? DEFAULT_SETTINGS.uiScale
             const rawLabels     = (await store.get<WalletLabels>('walletLabels')) ?? {}
             const rawBlacklist  = (await store.get<string[]>('blacklist'))        ?? []
 
-            setSettings({ devMin, devMax, migrationPct, openInBrowser, terminal })
+            setSettings({ devMin, devMax, migrationPct, openInBrowser, terminal, uiScale })
             setWalletLabels(rawLabels)
             setBlacklist(new Set(rawBlacklist))
             setReady(true)

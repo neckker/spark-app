@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { KeyRound, RefreshCw, ShieldAlert, ShieldOff, Clock, MonitorX, AlertCircle, XCircle, Info } from 'lucide-react'
+import { KeyRound, RefreshCw, ShieldAlert, ShieldOff, Clock, MonitorX, AlertCircle, XCircle, Info, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
@@ -184,6 +184,32 @@ function ErrorBlock({ status, apiMessage, inputError }: {
     )
 }
 
+// --- PurchaseBlock ---
+
+function PurchaseBlock() {
+    return (
+        <div className='rounded-lg bg-white/3 ring-1 ring-white/8 p-3'>
+            <div className='flex items-center justify-between gap-3'>
+                <div className='flex-1 min-w-0'>
+                    <p className='text-sm font-medium text-white'>Need a license key?</p>
+                    <p className='text-xs text-muted mt-0.5'>
+                        Get instant access to Spark
+                    </p>
+                </div>
+                <a
+                    href='https://t.me/neckkero'
+                    target='_blank'
+                    rel='noreferrer'
+                    className='shrink-0 inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium bg-white/5 ring-1 ring-white/10 text-white hover:bg-white/8 hover:ring-white/15 transition-colors'
+                >
+                    <span>Purchase</span>
+                    <ExternalLink className='h-3.5 w-3.5' />
+                </a>
+            </div>
+        </div>
+    )
+}
+
 // --- LicenseGate ---
 
 export default function LicenseGate({ children }: { children: React.ReactNode }) {
@@ -221,6 +247,9 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
 
     // Для первого запуска (no_license без попытки) — не показываем ошибку
     const errorStatus: LicenseStatus | null = attempted ? status : null
+
+    // Показываем блок покупки только для статусов, где нужна покупка/обновление
+    const showPurchaseBlock = ['no_license', 'not_activated', 'expired', 'revoked'].includes(status)
 
     return (
         <div className='min-h-screen bg-main flex items-center justify-center p-6'>
@@ -297,6 +326,9 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
                         </Button>
                     </>
                 )}
+
+                {/* purchase block — внизу */}
+                {showPurchaseBlock && <PurchaseBlock />}
 
             </div>
         </div>

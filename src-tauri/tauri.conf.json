@@ -16,10 +16,10 @@
                 "width": 500,
                 "height": 900,
 
-                "minWidth": 480,
+                "minWidth": 375,
                 "minHeight": 450,
 
-                "maxWidth": 500,
+                "maxWidth": 750,
                 "maxHeight": 1800
             }
         ],
