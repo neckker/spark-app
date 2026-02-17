@@ -7,6 +7,12 @@ import {
     DialogTitle,
     DialogTrigger
 } from '@/components/ui/dialog'
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from '@/components/ui/accordion'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -15,7 +21,7 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import { useSettings, type Terminal } from '@/context/SettingsContext'
-import { Ban, Tag, X, KeyRound, RefreshCw, Zap, ShieldCheck, ShieldAlert, Clock4 } from 'lucide-react'
+import { Ban, Tag, X, KeyRound, RefreshCw, Zap, ShieldCheck, ShieldAlert, Clock4, Copy, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/context/AuthContext'
 
@@ -25,7 +31,7 @@ import gmgnIcon  from '@/assets/terminals/gmgn.svg'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'main' | 'access' | 'labels' | 'blacklist'
+type Tab = 'main' | 'access' | 'labels' | 'blacklist' | 'faq'
 
 type FieldKey = 'devMin' | 'devMax' | 'migrationPct'
 type Errors = Partial<Record<FieldKey, string>>
@@ -78,6 +84,7 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
         { id: 'access',    label: 'Access' },
         { id: 'labels',    label: 'Labels' },
         { id: 'blacklist', label: 'Blacklist' },
+        { id: 'faq',       label: 'FAQ' },
     ]
     return (
         <div className='flex gap-1 p-1 rounded-lg bg-white/5 border border-white/8'>
@@ -342,21 +349,18 @@ function AccessTab() {
         return `${minutes}m`
     }, [expiresAt])
 
-    // Прогресс: от момента проверки до expires_at
-    // Берём полный срок из expiresAt, сравниваем с текущим временем
     const progressPct = React.useMemo(() => {
         if (!expiresAt) return 0
         const msLeft  = expiresAt - Date.now()
         if (msLeft <= 0) return 0
 
-        // Определяем "полный период" по диапазонам
         const days = msLeft / (1000 * 60 * 60 * 24)
         const total =
-            days > 300 ? 365 * 24 * 60 * 60 * 1000 :  // год
-            days > 25  ?  30 * 24 * 60 * 60 * 1000 :  // месяц
-            days > 5   ?   7 * 24 * 60 * 60 * 1000 :  // неделя
-            days > 1   ?   3 * 24 * 60 * 60 * 1000 :  // 3 дня
-                           1 * 24 * 60 * 60 * 1000     // остальное (часы/минуты)
+            days > 300 ? 365 * 24 * 60 * 60 * 1000 :
+            days > 25  ?  30 * 24 * 60 * 60 * 1000 :
+            days > 5   ?   7 * 24 * 60 * 60 * 1000 :
+            days > 1   ?   3 * 24 * 60 * 60 * 1000 :
+                           1 * 24 * 60 * 60 * 1000
 
         return Math.max(0, Math.min(100, (msLeft / total) * 100))
     }, [expiresAt])
@@ -378,7 +382,6 @@ function AccessTab() {
     const cfg     = statusConfig[status] ?? statusConfig.idle
     const CfgIcon = cfg.icon
 
-    // Цвет прогресс-бара — желтеет когда мало времени
     const progressColor =
         progressPct > 30 ? 'bg-emerald-500' :
         progressPct > 10 ? 'bg-amber-400'   : 'bg-rose-500'
@@ -527,6 +530,96 @@ function BlacklistTab() {
     )
 }
 
+// ─── FAQTab ───────────────────────────────────────────────────────────────────
+
+function FAQTab() {
+    const [copied, setCopied] = React.useState(false)
+    const walletAddress = 'BMi2W2cLPR4HycBsXgpbMuMcr5PYKseRbJ8wMJyeAdXM'
+
+    const copyWallet = async () => {
+        try {
+            await navigator.clipboard.writeText(walletAddress)
+            setCopied(true)
+            toast.success('Wallet address copied')
+            setTimeout(() => setCopied(false), 2000)
+        } catch {
+            toast.error('Failed to copy')
+        }
+    }
+
+    return (
+        <div className='space-y-3'>
+            <Accordion type='single' collapsible className='space-y-2'>
+                <AccordionItem value='refund' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
+                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
+                        Refund Policy
+                    </AccordionTrigger>
+                    <AccordionContent className='text-xs text-muted pb-3'>
+                        All sales are final. We do not offer refunds for license keys once they have been purchased and delivered. Please ensure you understand the product before making a purchase.
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value='stability' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
+                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
+                        Service Stability & Data Sources
+                    </AccordionTrigger>
+                    <AccordionContent className='text-xs text-muted pb-3'>
+                        Spark relies on external third-party data sources and APIs. We do not guarantee uninterrupted service, data accuracy, or availability. External services may experience downtime, rate limits, or changes that are beyond our control. Use this software at your own risk.
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value='liability' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
+                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
+                        Limitation of Liability
+                    </AccordionTrigger>
+                    <AccordionContent className='text-xs text-muted pb-3'>
+                        We are not responsible for any financial losses, missed opportunities, or damages resulting from the use of this software. Trading and investing in cryptocurrencies carries inherent risks. This software is provided "as is" without warranties of any kind.
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value='usage' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
+                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
+                        Acceptable Use
+                    </AccordionTrigger>
+                    <AccordionContent className='text-xs text-muted pb-3'>
+                        This software is for personal use only. You may not share, resell, or redistribute your license key. Violation of these terms may result in immediate license revocation without refund.
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value='payment' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
+                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
+                        Payment Information
+                    </AccordionTrigger>
+                    <AccordionContent className='text-xs text-muted pb-3 space-y-2'>
+                        <p>All payments for license keys are processed via Solana blockchain to our official wallet address:</p>
+                        <div className='flex items-center gap-2 rounded-md bg-white/5 ring-1 ring-white/8 p-2.5'>
+                            <span className='font-mono text-xs text-white flex-1 break-all'>{walletAddress}</span>
+                            <button
+                                type='button'
+                                onClick={() => void copyWallet()}
+                                className='shrink-0 text-muted hover:text-white transition-colors'
+                                title='Copy wallet address'
+                            >
+                                {copied ? <Check className='h-4 w-4 text-emerald-400' /> : <Copy className='h-4 w-4' />}
+                            </button>
+                        </div>
+                        <p className='text-amber-300/80'>⚠️ Always verify the wallet address before sending payment. We are not responsible for funds sent to incorrect addresses.</p>
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value='support' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
+                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
+                        Support & Contact
+                    </AccordionTrigger>
+                    <AccordionContent className='text-xs text-muted pb-3'>
+                        For license purchases, renewals, or technical support, contact us on Telegram: <a href='https://t.me/neckkero' target='_blank' rel='noreferrer' className='text-sky-400 hover:text-sky-300 transition-colors'>@neckkero</a>. Response times may vary.
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+        </div>
+    )
+}
+
 // ─── SettingsDialog ───────────────────────────────────────────────────────────
 
 export default function SettingsDialog({ children }: { children: React.ReactNode }) {
@@ -576,6 +669,7 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
                 {tab === 'access'    && <AccessTab />}
                 {tab === 'labels'    && <LabelsTab />}
                 {tab === 'blacklist' && <BlacklistTab />}
+                {tab === 'faq'       && <FAQTab />}
             </DialogContent>
         </Dialog>
     )
