@@ -51,6 +51,19 @@ const parseSol = (raw: string) => {
     return { ok: true as const, value: n }
 }
 
+// ─── SectionLabel ─────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+    return (
+        <div className='flex items-center gap-2 pb-0.5'>
+            <span className='text-[11px] font-semibold uppercase tracking-widest text-muted/80'>
+                {children}
+            </span>
+            <div className='flex-1 h-px bg-white/10' />
+        </div>
+    )
+}
+
 // ─── SuffixInput ──────────────────────────────────────────────────────────────
 
 function SuffixInput({
@@ -75,6 +88,28 @@ function SuffixInput({
             )}>
                 {suffix}
             </div>
+        </div>
+    )
+}
+
+// ─── RowSwitch ────────────────────────────────────────────────────────────────
+
+function RowSwitch({
+    label, description, checked, onCheckedChange, disabled
+}: {
+    label: string
+    description?: string
+    checked: boolean
+    onCheckedChange: (v: boolean) => void
+    disabled?: boolean
+}) {
+    return (
+        <div className='flex items-center justify-between gap-4'>
+            <div className='min-w-0'>
+                <div className='text-sm font-medium text-white'>{label}</div>
+                {description && <div className='text-xs text-muted mt-0.5'>{description}</div>}
+            </div>
+            <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} className='shrink-0' />
         </div>
     )
 }
@@ -109,16 +144,12 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
 // ─── TerminalPicker ───────────────────────────────────────────────────────────
 
 const TERMINALS: { id: Terminal; label: string; icon: string; url: string }[] = [
-    { id: 'axiom', label: 'Axiom',  icon: axiomIcon, url: 'axiom.trade' },
-    { id: 'padre', label: 'Padre',  icon: padreIcon, url: 'padre.gg' },
-    { id: 'gmgn',  label: 'GMGN',   icon: gmgnIcon,  url: 'gmgn.ai' },
+    { id: 'axiom', label: 'Axiom', icon: axiomIcon, url: 'axiom.trade' },
+    { id: 'padre', label: 'Padre', icon: padreIcon, url: 'padre.gg'   },
+    { id: 'gmgn',  label: 'GMGN',  icon: gmgnIcon,  url: 'gmgn.ai'    },
 ]
 
-function TerminalPicker({
-    value,
-    onChange,
-    disabled,
-}: {
+function TerminalPicker({ value, onChange, disabled }: {
     value: Terminal
     onChange: (t: Terminal) => void
     disabled?: boolean
@@ -129,14 +160,11 @@ function TerminalPicker({
                 const active = value === t.id
                 return (
                     <button
-                        key={t.id}
-                        type='button'
-                        disabled={disabled}
+                        key={t.id} type='button' disabled={disabled}
                         onClick={() => onChange(t.id)}
                         className={cn(
                             'flex flex-col items-center gap-1.5 rounded-lg py-3 px-2',
-                            'ring-1 transition-all duration-150',
-                            'text-xs font-medium',
+                            'ring-1 transition-all duration-150 text-xs font-medium',
                             active
                                 ? 'bg-white/8 ring-white/25 text-white'
                                 : 'bg-white/3 ring-white/8 text-muted hover:bg-white/6 hover:text-zinc-300',
@@ -155,11 +183,7 @@ function TerminalPicker({
 
 // ─── FeesFilterModeToggle ─────────────────────────────────────────────────────
 
-function FeesFilterModeToggle({
-    value,
-    onChange,
-    disabled,
-}: {
+function FeesFilterModeToggle({ value, onChange, disabled }: {
     value: FeesFilterMode
     onChange: (v: FeesFilterMode) => void
     disabled?: boolean
@@ -168,15 +192,11 @@ function FeesFilterModeToggle({
         <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
             {(['total', 'average'] as FeesFilterMode[]).map(mode => (
                 <button
-                    key={mode}
-                    type='button'
-                    disabled={disabled}
+                    key={mode} type='button' disabled={disabled}
                     onClick={() => onChange(mode)}
                     className={cn(
                         'flex-1 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors',
-                        value === mode
-                            ? 'bg-white/10 text-white'
-                            : 'text-muted hover:text-zinc-300',
+                        value === mode ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
                         disabled && 'opacity-40 cursor-not-allowed'
                     )}
                 >
@@ -190,11 +210,7 @@ function FeesFilterModeToggle({
 // ─── MainTab ──────────────────────────────────────────────────────────────────
 
 function MainTab({
-    settings,
-    store,
-    busy,
-    setBusy,
-    onSaved,
+    settings, store, busy, setBusy, onSaved,
 }: {
     settings: ReturnType<typeof useSettings>['settings']
     store: ReturnType<typeof useSettings>['store']
@@ -204,29 +220,29 @@ function MainTab({
 }) {
     const { patch } = useSettings()
 
-    const [devMin,             setDevMin]             = React.useState(String(settings.devMin))
-    const [devMax,             setDevMax]             = React.useState(String(settings.devMax))
-    const [migration,          setMigration]          = React.useState(String(settings.migrationPct))
-    const [openInBrowser,      setOpenInBrowser]      = React.useState(settings.openInBrowser)
-    const [terminal,           setTerminal]           = React.useState<Terminal>(settings.terminal)
-    const [uiScale,            setUIScale]            = React.useState(settings.uiScale)
-    const [hideMayhem,         setHideMayhem]         = React.useState(settings.hideMayhem)
-    const [feesFilterEnabled,  setFeesFilterEnabled]  = React.useState(settings.feesFilterEnabled)
-    const [feesFilterMode,     setFeesFilterMode]     = React.useState<FeesFilterMode>(settings.feesFilterMode)
-    const [feesFilterValue,    setFeesFilterValue]    = React.useState(String(settings.feesFilterValue))
-    const [errors,             setErrors]             = React.useState<Errors>({})
+    const [devMin,            setDevMin]            = React.useState(String(settings.devMin))
+    const [devMax,            setDevMax]            = React.useState(String(settings.devMax))
+    const [migration,         setMigration]         = React.useState(String(settings.migrationPct))
+    const [hideMayhem,        setHideMayhem]        = React.useState(settings.hideMayhem)
+    const [feesFilterEnabled, setFeesFilterEnabled] = React.useState(settings.feesFilterEnabled)
+    const [feesFilterMode,    setFeesFilterMode]    = React.useState<FeesFilterMode>(settings.feesFilterMode)
+    const [feesFilterValue,   setFeesFilterValue]   = React.useState(String(settings.feesFilterValue))
+    const [openInBrowser,     setOpenInBrowser]     = React.useState(settings.openInBrowser)
+    const [terminal,          setTerminal]          = React.useState<Terminal>(settings.terminal)
+    const [uiScale,           setUIScale]           = React.useState(settings.uiScale)
+    const [errors,            setErrors]            = React.useState<Errors>({})
 
     React.useEffect(() => {
         setDevMin(String(settings.devMin))
         setDevMax(String(settings.devMax))
         setMigration(String(settings.migrationPct))
-        setOpenInBrowser(settings.openInBrowser)
-        setTerminal(settings.terminal)
-        setUIScale(settings.uiScale)
         setHideMayhem(settings.hideMayhem)
         setFeesFilterEnabled(settings.feesFilterEnabled)
         setFeesFilterMode(settings.feesFilterMode)
         setFeesFilterValue(String(settings.feesFilterValue))
+        setOpenInBrowser(settings.openInBrowser)
+        setTerminal(settings.terminal)
+        setUIScale(settings.uiScale)
         setErrors({})
     }, [settings])
 
@@ -244,18 +260,16 @@ function MainTab({
             if (!Number.isFinite(n)) {
                 next.migrationPct = 'Invalid number'
             } else if (n < 3) {
-                next.migrationPct = 'Minimum 3% for migration rate'
+                next.migrationPct = 'Minimum 3%'
             } else {
                 migValue = Math.min(100, n)
             }
         }
 
         const fees = parseSol(feesFilterValue)
-
         if (!min.ok) next.devMin = min.error
         if (!max.ok) next.devMax = max.error
         if (feesFilterEnabled && !fees.ok) next.feesFilterValue = fees.error
-
         if (min.ok && max.ok && min.value > max.value) {
             next.devMin = 'Min > Max'
             next.devMax = 'Max < Min'
@@ -267,13 +281,13 @@ function MainTab({
                 devMin:            min.ok ? min.value : 0,
                 devMax:            max.ok ? max.value : 100,
                 migrationPct:      migValue,
-                openInBrowser,
-                terminal,
-                uiScale,
                 hideMayhem,
                 feesFilterEnabled,
                 feesFilterMode,
                 feesFilterValue:   fees.ok ? fees.value : 1,
+                openInBrowser,
+                terminal,
+                uiScale,
             }
         }
     }
@@ -295,14 +309,13 @@ function MainTab({
     }
 
     return (
-        <div className='space-y-3'>
-            {/* ── Filters ── */}
-            <div className='space-y-4'>
-                <div>
-                    <div className='font-medium text-white'>Filters</div>
-                    <div className='text-sm text-muted mt-0.5'>Filter params</div>
-                </div>
+        <div className='space-y-5'>
 
+            {/* ══ FILTERS ══════════════════════════════════════════════════════ */}
+            <div className='space-y-4 px-1'>
+                <SectionLabel>Filters</SectionLabel>
+
+                {/* Dev Holdings */}
                 <div className='space-y-2'>
                     <Label>Dev Holdings %</Label>
                     <div className='grid grid-cols-2 gap-3'>
@@ -310,128 +323,120 @@ function MainTab({
                         <SuffixInput value={devMax} onChange={setDevMax} suffix='MAX' placeholder='100' error={!!errors.devMax} />
                     </div>
                     {(errors.devMin || errors.devMax) && (
-                        <div className='text-xs text-rose-300'>{errors.devMin || errors.devMax}</div>
+                        <p className='text-xs text-rose-300'>{errors.devMin || errors.devMax}</p>
                     )}
                 </div>
 
+                {/* Migration */}
                 <div className='space-y-2'>
-                    <Label>Dev Migration %</Label>
-                    <SuffixInput value={migration} onChange={setMigration} suffix='FROM' placeholder='3' error={!!errors.migrationPct} />
+                    <Label>Migration rate %</Label>
+                    <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='3' error={!!errors.migrationPct} />
                     {errors.migrationPct
-                        ? <div className='text-xs text-rose-300'>{errors.migrationPct}</div>
-                        : <div className='text-xs text-muted'>Minimum 3% for migration rate</div>
+                        ? <p className='text-xs text-rose-300'>{errors.migrationPct}</p>
+                        : <p className='text-xs text-muted'>Minimum allowed value is 3%</p>
                     }
                 </div>
-            </div>
 
-            <Separator />
-
-            {/* ── Mayhem filter ── */}
-            <div className='space-y-3'>
-                <div>
-                    <div className='font-medium text-white'>Token Filters</div>
-                    <div className='text-sm text-muted mt-0.5'>Additional filtering options</div>
+                {/* Mayhem */}
+                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5'>
+                    <RowSwitch
+                        label='Hide Mayhem tokens'
+                        description='Skip pump.fun tokens launched in Mayhem mode'
+                        checked={hideMayhem}
+                        onCheckedChange={setHideMayhem}
+                        disabled={busy}
+                    />
                 </div>
 
-                <div className='flex items-center justify-between'>
-                    <div>
-                        <div className='text-sm font-medium text-white'>Hide Mayhem tokens</div>
-                        <div className='text-xs text-muted'>Skip pump.fun tokens in Mayhem mode</div>
-                    </div>
-                    <Switch checked={hideMayhem} onCheckedChange={setHideMayhem} disabled={busy} />
-                </div>
-            </div>
+                {/* Fees filter */}
+                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                    <RowSwitch
+                        label='Fees filter'
+                        description="Filter by dev's fee history on previous tokens"
+                        checked={feesFilterEnabled}
+                        onCheckedChange={setFeesFilterEnabled}
+                        disabled={busy}
+                    />
 
-            <Separator />
+                    {feesFilterEnabled && (
+                        <>
+                            <Separator className='opacity-40' />
+                            <div className='space-y-3'>
+                                <div className='space-y-1.5'>
+                                    <Label className='text-xs text-muted'>Calculation mode</Label>
+                                    <FeesFilterModeToggle
+                                        value={feesFilterMode}
+                                        onChange={setFeesFilterMode}
+                                        disabled={busy}
+                                    />
+                                    <p className='text-xs text-muted'>
+                                        {feesFilterMode === 'total'
+                                            ? 'Sum of fees across all tracked tokens must exceed the threshold'
+                                            : 'Average fee per token must exceed the threshold'
+                                        }
+                                    </p>
+                                </div>
 
-            {/* ── Fees filter ── */}
-            <div className='space-y-3'>
-                <div className='flex items-center justify-between'>
-                    <div>
-                        <div className='font-medium text-white'>Fees Filter</div>
-                        <div className='text-sm text-muted'>Filter by dev's previous token fees</div>
-                    </div>
-                    <Switch checked={feesFilterEnabled} onCheckedChange={setFeesFilterEnabled} disabled={busy} />
-                </div>
-
-                {feesFilterEnabled && (
-                    <div className='space-y-3'>
-                        <div className='space-y-1.5'>
-                            <Label className='text-xs text-muted'>Mode</Label>
-                            <FeesFilterModeToggle
-                                value={feesFilterMode}
-                                onChange={setFeesFilterMode}
-                                disabled={busy}
-                            />
-                            <div className='text-xs text-muted pt-0.5'>
-                                {feesFilterMode === 'total'
-                                    ? 'Sum of fees across all tracked tokens must exceed the threshold'
-                                    : 'Average fee per token must exceed the threshold'
-                                }
+                                <div className='space-y-1.5'>
+                                    <Label className='text-xs text-muted'>Threshold</Label>
+                                    <SuffixInput
+                                        value={feesFilterValue}
+                                        onChange={setFeesFilterValue}
+                                        suffix='SOL'
+                                        placeholder='1'
+                                        error={!!errors.feesFilterValue}
+                                    />
+                                    {errors.feesFilterValue && (
+                                        <p className='text-xs text-rose-300'>{errors.feesFilterValue}</p>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-
-                        <div className='space-y-1.5'>
-                            <Label className='text-xs text-muted'>Minimum fees (SOL)</Label>
-                            <SuffixInput
-                                value={feesFilterValue}
-                                onChange={setFeesFilterValue}
-                                suffix='SOL'
-                                placeholder='1'
-                                error={!!errors.feesFilterValue}
-                            />
-                            {errors.feesFilterValue && (
-                                <div className='text-xs text-rose-300'>{errors.feesFilterValue}</div>
-                            )}
-                        </div>
-                    </div>
-                )}
+                        </>
+                    )}
+                </div>
             </div>
 
-            <Separator />
+            {/* ══ APP SETTINGS ═════════════════════════════════════════════════ */}
+            <div className='space-y-4 px-1'>
+                <SectionLabel>App Settings</SectionLabel>
 
-            {/* ── Auto-open ── */}
-            <div className='space-y-3'>
-                <div className='flex items-center justify-between'>
-                    <div>
-                        <div className='font-medium text-white'>Auto-open token</div>
-                        <div className='text-sm text-muted'>Open token in a new tab</div>
-                    </div>
-                    <Switch checked={openInBrowser} onCheckedChange={setOpenInBrowser} disabled={busy} />
+                {/* Auto-open + terminal picker */}
+                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                    <RowSwitch
+                        label='Auto-open token'
+                        description='Automatically open new tokens in browser'
+                        checked={openInBrowser}
+                        onCheckedChange={setOpenInBrowser}
+                        disabled={busy}
+                    />
+                    {openInBrowser && (
+                        <>
+                            <Separator className='opacity-40' />
+                            <div className='space-y-1.5'>
+                                <Label className='text-xs text-muted'>Terminal</Label>
+                                <TerminalPicker value={terminal} onChange={setTerminal} disabled={busy} />
+                            </div>
+                        </>
+                    )}
                 </div>
 
-                <TerminalPicker
-                    value={terminal}
-                    onChange={setTerminal}
-                    disabled={!openInBrowser || busy}
-                />
-            </div>
-
-            <Separator />
-
-            {/* ── UI Scale ── */}
-            <div className='space-y-3'>
-                <div>
-                    <div className='font-medium text-white'>UI Scale</div>
-                    <div className='text-sm text-muted'>Adjust interface size</div>
-                </div>
-
-                <div className='space-y-2.5'>
-                    <div className='flex items-center justify-between text-sm'>
-                        <span className='text-muted'>Scale</span>
-                        <span className='text-white font-medium tabular-nums'>{uiScale}%</span>
+                {/* UI Scale */}
+                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-3 space-y-3'>
+                    <div className='flex items-center justify-between'>
+                        <div>
+                            <div className='text-sm font-medium text-white'>UI Scale</div>
+                            <div className='text-xs text-muted mt-0.5'>Adjust interface size</div>
+                        </div>
+                        <span className='text-sm font-semibold text-white tabular-nums'>{uiScale}%</span>
                     </div>
                     <input
-                        type='range'
-                        min='75'
-                        max='150'
-                        step='5'
+                        type='range' min='75' max='150' step='5'
                         value={uiScale}
                         onChange={e => setUIScale(Number(e.target.value))}
                         disabled={busy}
                         className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
                     />
-                    <div className='relative flex text-xs text-muted tabular-nums h-4'>
+                    <div className='relative flex text-[11px] text-muted tabular-nums h-4'>
                         <span className='absolute left-0'>75%</span>
                         <span className='absolute left-1/3 -translate-x-1/2'>100%</span>
                         <span className='absolute left-2/3 -translate-x-1/2'>125%</span>
@@ -440,9 +445,8 @@ function MainTab({
                 </div>
             </div>
 
-            <Separator />
-
-            <div className='flex justify-end'>
+            {/* ── Save ── */}
+            <div className='flex justify-end pt-1'>
                 <Button variant='default' onClick={save} disabled={busy}>
                     {busy ? (
                         <span className='inline-flex items-center gap-2'>
@@ -465,11 +469,9 @@ function AccessTab() {
         if (!expiresAt) return null
         const msLeft = expiresAt - Date.now()
         if (msLeft <= 0) return 'Expired'
-
         const days    = Math.floor(msLeft / (1000 * 60 * 60 * 24))
         const hours   = Math.floor((msLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
         const minutes = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60))
-
         if (days >= 1)  return `${days}d ${hours}h`
         if (hours >= 1) return `${hours}h ${minutes}m`
         return `${minutes}m`
@@ -477,9 +479,8 @@ function AccessTab() {
 
     const progressPct = React.useMemo(() => {
         if (!expiresAt) return 0
-        const msLeft  = expiresAt - Date.now()
+        const msLeft = expiresAt - Date.now()
         if (msLeft <= 0) return 0
-
         const days = msLeft / (1000 * 60 * 60 * 24)
         const total =
             days > 300 ? 365 * 24 * 60 * 60 * 1000 :
@@ -487,7 +488,6 @@ function AccessTab() {
             days > 5   ?   7 * 24 * 60 * 60 * 1000 :
             days > 1   ?   3 * 24 * 60 * 60 * 1000 :
                            1 * 24 * 60 * 60 * 1000
-
         return Math.max(0, Math.min(100, (msLeft / total) * 100))
     }, [expiresAt])
 
@@ -507,26 +507,18 @@ function AccessTab() {
 
     const cfg     = statusConfig[status] ?? statusConfig.idle
     const CfgIcon = cfg.icon
-
     const progressColor =
         progressPct > 30 ? 'bg-emerald-500' :
         progressPct > 10 ? 'bg-amber-400'   : 'bg-rose-500'
 
     return (
-        <div className='space-y-4'>
+        <div className='space-y-4 p-1'>
             <div className='rounded-lg bg-white/3 ring-1 ring-white/8 p-3.5 space-y-3'>
                 <div className='flex items-center justify-between'>
                     <div className='flex items-center gap-2'>
-                        <CfgIcon className={cn(
-                            'h-4 w-4',
-                            cfg.color,
-                            status === 'checking' && 'animate-spin'
-                        )} />
-                        <span className={cn('text-sm font-medium', cfg.color)}>
-                            {cfg.label}
-                        </span>
+                        <CfgIcon className={cn('h-4 w-4', cfg.color, status === 'checking' && 'animate-spin')} />
+                        <span className={cn('text-sm font-medium', cfg.color)}>{cfg.label}</span>
                     </div>
-
                     {isActive && timeLeft && (
                         <span className='inline-flex items-center gap-1 text-xs text-muted'>
                             <Clock4 className='h-3.5 w-3.5' />
@@ -535,7 +527,6 @@ function AccessTab() {
                         </span>
                     )}
                 </div>
-
                 {isActive && (
                     <div className='h-1 rounded-full bg-white/8 overflow-hidden'>
                         <div
@@ -544,25 +535,19 @@ function AccessTab() {
                         />
                     </div>
                 )}
-
                 {licenseKey && (
                     <div className='flex items-center gap-2'>
                         <KeyRound className='h-3.5 w-3.5 text-muted shrink-0' />
-                        <span className='font-mono text-xs text-muted truncate'>
-                            {licenseKey}
-                        </span>
+                        <span className='font-mono text-xs text-muted truncate'>{licenseKey}</span>
                     </div>
                 )}
-
                 {errorMessage && !isActive && (
                     <p className='text-xs text-rose-300'>{errorMessage}</p>
                 )}
             </div>
-
             <a
                 href='https://t.me/neckkero'
-                target='_blank'
-                rel='noreferrer'
+                target='_blank' rel='noreferrer'
                 className={cn(
                     'flex items-center justify-center gap-2 w-full',
                     'rounded-md px-4 py-2 text-sm font-medium',
@@ -595,7 +580,7 @@ function LabelsTab() {
     }
 
     return (
-        <div className='space-y-1.5'>
+        <div className='space-y-1.5 p-1'>
             {entries.map(([addr, label]) => (
                 <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
                     <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
@@ -630,14 +615,12 @@ function BlacklistTab() {
     }
 
     return (
-        <div className='space-y-1.5'>
+        <div className='space-y-1.5 p-1'>
             {entries.map(addr => {
                 const label = walletLabels[addr]
                 return (
                     <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                        {label && (
-                            <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
-                        )}
+                        {label && <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>}
                         <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
                         <button
                             type='button' title='Remove from blacklist'
@@ -683,19 +666,16 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
                     requestAnimationFrame(() => contentRef.current?.focus())
                 }}
             >
-                {/* ── fixed header ── */}
                 <DialogHeader className='shrink-0'>
                     <DialogTitle>Settings</DialogTitle>
                     <DialogDescription>App settings</DialogDescription>
                 </DialogHeader>
 
-                {/* ── fixed tab bar ── */}
                 <div className='shrink-0'>
                     <TabBar active={tab} onChange={setTab} />
                 </div>
 
-                {/* ── scrollable content ── */}
-                <div className='flex-1 overflow-y-auto min-h-0 pr-1'>
+                <div className='flex-1 overflow-y-auto min-h-0'>
                     {tab === 'main' && (
                         <MainTab
                             settings={settings}
