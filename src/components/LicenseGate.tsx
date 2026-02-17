@@ -3,6 +3,7 @@ import { KeyRound, RefreshCw, ShieldAlert, ShieldOff, Clock, MonitorX, AlertCirc
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { FAQModal } from '@/components/FAQModal'
 import { useAuth, type LicenseStatus } from '@/context/AuthContext'
 
 // --- helpers ---
@@ -330,6 +331,9 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
                 {/* purchase block — внизу */}
                 {showPurchaseBlock && <PurchaseBlock />}
 
+                <div className='flex justify-center mt-4'>
+                    <FAQModal />
+                </div>
             </div>
         </div>
     )

@@ -15,7 +15,7 @@ export type TokenEvent = {
     ticker: string
     devhold: number
     protocol: 'pump' | 'bonk' | string
-    market_cap: number          // SOL — новое поле
+    market_cap: number
     metadata_url: string | null
     is_mayhem_mode: boolean
 }
@@ -40,12 +40,12 @@ export type LastToken = {
     supply: number
     created_at: number
     price: number
-    market_cap: number          // текущий mcap в SOL
+    market_cap: number
     is_migrated: boolean
     total_fees: number | null
     is_dex_paid: boolean | null
     dex_paid_at: number | null
-    peak_mcap: number | null    // ATH mcap в SOL
+    peak_mcap: number | null
     ath_price: number | null
     ath_time: number | null
 }
@@ -53,7 +53,7 @@ export type LastToken = {
 export type WsTokenMessage = {
     newpair: TokenEvent
     dev: DevInfo
-    last_tokens: LastToken[]    // переименовано
+    last_tokens: LastToken[]
 }
 
 export type Metadata = {
@@ -171,26 +171,68 @@ function normalizeMetadata(raw: any): Metadata | null {
     return m
 }
 
+// ─── fees filter helper ────────────────────────────────────────────────────────
+
+/**
+ * Returns true if the token should PASS the fees filter (i.e. should be shown).
+ * When the filter is disabled → always pass.
+ * Tokens with no fee data (all null) → pass through (we can't filter what we don't have).
+ */
+function passesFeeFilter(
+    lastTokens: LastToken[],
+    enabled: boolean,
+    mode: 'total' | 'average',
+    threshold: number
+): boolean {
+    if (!enabled) return true
+
+    // Collect only tokens that have fee data
+    const withFees = lastTokens.filter(t => t.total_fees !== null) as (LastToken & { total_fees: number })[]
+
+    // No fee data available → let it through (can't filter without data)
+    if (withFees.length === 0) return true
+
+    if (mode === 'total') {
+        const sum = withFees.reduce((acc, t) => acc + t.total_fees, 0)
+        return sum >= threshold
+    } else {
+        const avg = withFees.reduce((acc, t) => acc + t.total_fees, 0) / withFees.length
+        return avg >= threshold
+    }
+}
+
 export function useSparkTokens() {
     const { settings, isBlacklisted } = useSettings()
 
     const openInBrowserRef = useRef(settings.openInBrowser)
     const terminalRef      = useRef(settings.terminal)
     const filtersRef = useRef({
-        devMin:       settings.devMin,
-        devMax:       settings.devMax,
-        migrationPct: settings.migrationPct,
+        devMin:           settings.devMin,
+        devMax:           settings.devMax,
+        migrationPct:     settings.migrationPct,
+        hideMayhem:       settings.hideMayhem,
+        feesFilterEnabled: settings.feesFilterEnabled,
+        feesFilterMode:   settings.feesFilterMode,
+        feesFilterValue:  settings.feesFilterValue,
     })
 
     useEffect(() => { openInBrowserRef.current = settings.openInBrowser }, [settings.openInBrowser])
     useEffect(() => { terminalRef.current = settings.terminal },           [settings.terminal])
     useEffect(() => {
         filtersRef.current = {
-            devMin:       settings.devMin,
-            devMax:       settings.devMax,
-            migrationPct: settings.migrationPct,
+            devMin:            settings.devMin,
+            devMax:            settings.devMax,
+            migrationPct:      settings.migrationPct,
+            hideMayhem:        settings.hideMayhem,
+            feesFilterEnabled: settings.feesFilterEnabled,
+            feesFilterMode:    settings.feesFilterMode,
+            feesFilterValue:   settings.feesFilterValue,
         }
-    }, [settings.devMin, settings.devMax, settings.migrationPct])
+    }, [
+        settings.devMin, settings.devMax, settings.migrationPct,
+        settings.hideMayhem,
+        settings.feesFilterEnabled, settings.feesFilterMode, settings.feesFilterValue,
+    ])
 
     const isBlacklistedRef = useRef(isBlacklisted)
     useEffect(() => { isBlacklistedRef.current = isBlacklisted }, [isBlacklisted])
@@ -364,18 +406,35 @@ export function useSparkTokens() {
 
             const { newpair, dev, last_tokens } = parsed
 
-            const { devMin, devMax, migrationPct } = filtersRef.current
+            const {
+                devMin, devMax, migrationPct,
+                hideMayhem,
+                feesFilterEnabled, feesFilterMode, feesFilterValue,
+            } = filtersRef.current
+
+            // ── dev holdings filter ──
             if (newpair.devhold < devMin || newpair.devhold > devMax) return
+
+            // ── migration rate filter ──
             if (dev.tokens.rate < migrationPct) return
+
+            // ── blacklist filter ──
             if (isBlacklistedRef.current(dev.address)) return
+
+            // ── mayhem filter ──
+            if (hideMayhem && newpair.is_mayhem_mode === true) return
+
+            // ── normalize last tokens first so we can run the fees check ──
+            const lastTokens = normalizeLastTokens(last_tokens)
+
+            // ── fees filter ──
+            if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue)) return
 
             totalProcessedRef.current += 1
             setTotalProcessed(totalProcessedRef.current)
 
             const id = newpair.address
             if (openInBrowserRef.current) void openUrl(terminalUrl(id, terminalRef.current))
-
-            const lastTokens = normalizeLastTokens(last_tokens)
 
             setTokens(prevTokens => {
                 const rest = prevTokens.filter(x => x.id !== id)

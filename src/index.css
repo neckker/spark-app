@@ -4,9 +4,15 @@
 @import "shadcn/tailwind.css";
 
 /* custom scroll */
+* {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
 *::-webkit-scrollbar {
-    width: 14px !important;
-    height: 12px;
+    display: none;
+    width: 0;
+    height: 0;
 }
 
 *::-webkit-scrollbar-track {

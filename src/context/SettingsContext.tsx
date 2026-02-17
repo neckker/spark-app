@@ -5,6 +5,8 @@ import { LazyStore } from '@tauri-apps/plugin-store'
 
 export type Terminal = 'axiom' | 'padre' | 'gmgn'
 
+export type FeesFilterMode = 'total' | 'average'
+
 export interface Settings {
     devMin: number
     devMax: number
@@ -12,15 +14,24 @@ export interface Settings {
     openInBrowser: boolean
     terminal: Terminal
     uiScale: number
+    // new filters
+    hideMayhem: boolean
+    feesFilterEnabled: boolean
+    feesFilterMode: FeesFilterMode
+    feesFilterValue: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
     devMin: 0,
     devMax: 100,
-    migrationPct: 0,
+    migrationPct: 3,
     openInBrowser: false,
     terminal: 'axiom',
     uiScale: 100,
+    hideMayhem: false,
+    feesFilterEnabled: false,
+    feesFilterMode: 'total',
+    feesFilterValue: 1,
 }
 
 /** address → human label (до 10 символов) */
@@ -71,16 +82,23 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         async function load() {
-            const devMin        = (await store.get<number>('devMin'))          ?? DEFAULT_SETTINGS.devMin
-            const devMax        = (await store.get<number>('devMax'))          ?? DEFAULT_SETTINGS.devMax
-            const migrationPct  = (await store.get<number>('migrationPct'))    ?? DEFAULT_SETTINGS.migrationPct
-            const openInBrowser = (await store.get<boolean>('openInBrowser'))  ?? DEFAULT_SETTINGS.openInBrowser
-            const terminal      = (await store.get<Terminal>('terminal'))      ?? DEFAULT_SETTINGS.terminal
-            const uiScale       = (await store.get<number>('uiScale'))         ?? DEFAULT_SETTINGS.uiScale
-            const rawLabels     = (await store.get<WalletLabels>('walletLabels')) ?? {}
-            const rawBlacklist  = (await store.get<string[]>('blacklist'))        ?? []
+            const devMin             = (await store.get<number>('devMin'))             ?? DEFAULT_SETTINGS.devMin
+            const devMax             = (await store.get<number>('devMax'))             ?? DEFAULT_SETTINGS.devMax
+            const migrationPct       = (await store.get<number>('migrationPct'))       ?? DEFAULT_SETTINGS.migrationPct
+            const openInBrowser      = (await store.get<boolean>('openInBrowser'))     ?? DEFAULT_SETTINGS.openInBrowser
+            const terminal           = (await store.get<Terminal>('terminal'))         ?? DEFAULT_SETTINGS.terminal
+            const uiScale            = (await store.get<number>('uiScale'))            ?? DEFAULT_SETTINGS.uiScale
+            const hideMayhem         = (await store.get<boolean>('hideMayhem'))        ?? DEFAULT_SETTINGS.hideMayhem
+            const feesFilterEnabled  = (await store.get<boolean>('feesFilterEnabled')) ?? DEFAULT_SETTINGS.feesFilterEnabled
+            const feesFilterMode     = (await store.get<FeesFilterMode>('feesFilterMode')) ?? DEFAULT_SETTINGS.feesFilterMode
+            const feesFilterValue    = (await store.get<number>('feesFilterValue'))    ?? DEFAULT_SETTINGS.feesFilterValue
+            const rawLabels          = (await store.get<WalletLabels>('walletLabels')) ?? {}
+            const rawBlacklist       = (await store.get<string[]>('blacklist'))        ?? []
 
-            setSettings({ devMin, devMax, migrationPct, openInBrowser, terminal, uiScale })
+            setSettings({
+                devMin, devMax, migrationPct, openInBrowser, terminal, uiScale,
+                hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue,
+            })
             setWalletLabels(rawLabels)
             setBlacklist(new Set(rawBlacklist))
             setReady(true)

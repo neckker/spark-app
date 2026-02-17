@@ -7,12 +7,7 @@ import {
     DialogTitle,
     DialogTrigger
 } from '@/components/ui/dialog'
-import {
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from '@/components/ui/accordion'
+
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -20,8 +15,8 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
-import { useSettings, type Terminal } from '@/context/SettingsContext'
-import { Ban, Tag, X, KeyRound, RefreshCw, Zap, ShieldCheck, ShieldAlert, Clock4, Copy, Check } from 'lucide-react'
+import { useSettings, type Terminal, type FeesFilterMode } from '@/context/SettingsContext'
+import { Ban, Tag, X, KeyRound, RefreshCw, Zap, ShieldCheck, ShieldAlert, Clock4 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/context/AuthContext'
 
@@ -31,9 +26,9 @@ import gmgnIcon  from '@/assets/terminals/gmgn.svg'
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'main' | 'access' | 'labels' | 'blacklist' | 'faq'
+type Tab = 'main' | 'access' | 'labels' | 'blacklist'
 
-type FieldKey = 'devMin' | 'devMax' | 'migrationPct'
+type FieldKey = 'devMin' | 'devMax' | 'migrationPct' | 'feesFilterValue'
 type Errors = Partial<Record<FieldKey, string>>
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -46,6 +41,14 @@ const parsePercent = (raw: string) => {
     const n = Number(cleaned)
     if (!Number.isFinite(n)) return { ok: false as const, error: 'Invalid number' }
     return { ok: true as const, value: Math.max(0, Math.min(100, n)) }
+}
+
+const parseSol = (raw: string) => {
+    const cleaned = normalize(raw)
+    if (!cleaned) return { ok: false as const, error: 'Required' }
+    const n = Number(cleaned)
+    if (!Number.isFinite(n) || n < 0) return { ok: false as const, error: 'Invalid number' }
+    return { ok: true as const, value: n }
 }
 
 // ─── SuffixInput ──────────────────────────────────────────────────────────────
@@ -84,7 +87,6 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
         { id: 'access',    label: 'Access' },
         { id: 'labels',    label: 'Labels' },
         { id: 'blacklist', label: 'Blacklist' },
-        { id: 'faq',       label: 'FAQ' },
     ]
     return (
         <div className='flex gap-1 p-1 rounded-lg bg-white/5 border border-white/8'>
@@ -151,6 +153,40 @@ function TerminalPicker({
     )
 }
 
+// ─── FeesFilterModeToggle ─────────────────────────────────────────────────────
+
+function FeesFilterModeToggle({
+    value,
+    onChange,
+    disabled,
+}: {
+    value: FeesFilterMode
+    onChange: (v: FeesFilterMode) => void
+    disabled?: boolean
+}) {
+    return (
+        <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+            {(['total', 'average'] as FeesFilterMode[]).map(mode => (
+                <button
+                    key={mode}
+                    type='button'
+                    disabled={disabled}
+                    onClick={() => onChange(mode)}
+                    className={cn(
+                        'flex-1 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors',
+                        value === mode
+                            ? 'bg-white/10 text-white'
+                            : 'text-muted hover:text-zinc-300',
+                        disabled && 'opacity-40 cursor-not-allowed'
+                    )}
+                >
+                    {mode === 'total' ? 'Total' : 'Average'}
+                </button>
+            ))}
+        </div>
+    )
+}
+
 // ─── MainTab ──────────────────────────────────────────────────────────────────
 
 function MainTab({
@@ -168,13 +204,17 @@ function MainTab({
 }) {
     const { patch } = useSettings()
 
-    const [devMin,        setDevMin]        = React.useState(String(settings.devMin))
-    const [devMax,        setDevMax]        = React.useState(String(settings.devMax))
-    const [migration,     setMigration]     = React.useState(String(settings.migrationPct))
-    const [openInBrowser, setOpenInBrowser] = React.useState(settings.openInBrowser)
-    const [terminal,      setTerminal]      = React.useState<Terminal>(settings.terminal)
-    const [uiScale,       setUIScale]       = React.useState(settings.uiScale)
-    const [errors,        setErrors]        = React.useState<Errors>({})
+    const [devMin,             setDevMin]             = React.useState(String(settings.devMin))
+    const [devMax,             setDevMax]             = React.useState(String(settings.devMax))
+    const [migration,          setMigration]          = React.useState(String(settings.migrationPct))
+    const [openInBrowser,      setOpenInBrowser]      = React.useState(settings.openInBrowser)
+    const [terminal,           setTerminal]           = React.useState<Terminal>(settings.terminal)
+    const [uiScale,            setUIScale]            = React.useState(settings.uiScale)
+    const [hideMayhem,         setHideMayhem]         = React.useState(settings.hideMayhem)
+    const [feesFilterEnabled,  setFeesFilterEnabled]  = React.useState(settings.feesFilterEnabled)
+    const [feesFilterMode,     setFeesFilterMode]     = React.useState<FeesFilterMode>(settings.feesFilterMode)
+    const [feesFilterValue,    setFeesFilterValue]    = React.useState(String(settings.feesFilterValue))
+    const [errors,             setErrors]             = React.useState<Errors>({})
 
     React.useEffect(() => {
         setDevMin(String(settings.devMin))
@@ -183,6 +223,10 @@ function MainTab({
         setOpenInBrowser(settings.openInBrowser)
         setTerminal(settings.terminal)
         setUIScale(settings.uiScale)
+        setHideMayhem(settings.hideMayhem)
+        setFeesFilterEnabled(settings.feesFilterEnabled)
+        setFeesFilterMode(settings.feesFilterMode)
+        setFeesFilterValue(String(settings.feesFilterValue))
         setErrors({})
     }, [settings])
 
@@ -190,11 +234,27 @@ function MainTab({
         const next: Errors = {}
         const min = parsePercent(devMin)
         const max = parsePercent(devMax)
-        const mig = parsePercent(migration)
+
+        const migCleaned = normalize(migration)
+        let migValue = 3
+        if (!migCleaned) {
+            next.migrationPct = 'Required'
+        } else {
+            const n = Number(migCleaned)
+            if (!Number.isFinite(n)) {
+                next.migrationPct = 'Invalid number'
+            } else if (n < 3) {
+                next.migrationPct = 'Minimum 3% for migration rate'
+            } else {
+                migValue = Math.min(100, n)
+            }
+        }
+
+        const fees = parseSol(feesFilterValue)
 
         if (!min.ok) next.devMin = min.error
         if (!max.ok) next.devMax = max.error
-        if (!mig.ok) next.migrationPct = mig.error
+        if (feesFilterEnabled && !fees.ok) next.feesFilterValue = fees.error
 
         if (min.ok && max.ok && min.value > max.value) {
             next.devMin = 'Min > Max'
@@ -204,12 +264,16 @@ function MainTab({
         return {
             ok: Object.keys(next).length === 0,
             values: {
-                devMin:       min.ok ? min.value : 0,
-                devMax:       max.ok ? max.value : 100,
-                migrationPct: mig.ok ? mig.value : 0,
+                devMin:            min.ok ? min.value : 0,
+                devMax:            max.ok ? max.value : 100,
+                migrationPct:      migValue,
                 openInBrowser,
                 terminal,
                 uiScale,
+                hideMayhem,
+                feesFilterEnabled,
+                feesFilterMode,
+                feesFilterValue:   fees.ok ? fees.value : 1,
             }
         }
     }
@@ -253,10 +317,75 @@ function MainTab({
                 <div className='space-y-2'>
                     <Label>Dev Migration %</Label>
                     <SuffixInput value={migration} onChange={setMigration} suffix='FROM' placeholder='3' error={!!errors.migrationPct} />
-                    {errors.migrationPct && (
-                        <div className='text-xs text-rose-300'>{errors.migrationPct}</div>
-                    )}
+                    {errors.migrationPct
+                        ? <div className='text-xs text-rose-300'>{errors.migrationPct}</div>
+                        : <div className='text-xs text-muted'>Minimum 3% for migration rate</div>
+                    }
                 </div>
+            </div>
+
+            <Separator />
+
+            {/* ── Mayhem filter ── */}
+            <div className='space-y-3'>
+                <div>
+                    <div className='font-medium text-white'>Token Filters</div>
+                    <div className='text-sm text-muted mt-0.5'>Additional filtering options</div>
+                </div>
+
+                <div className='flex items-center justify-between'>
+                    <div>
+                        <div className='text-sm font-medium text-white'>Hide Mayhem tokens</div>
+                        <div className='text-xs text-muted'>Skip pump.fun tokens in Mayhem mode</div>
+                    </div>
+                    <Switch checked={hideMayhem} onCheckedChange={setHideMayhem} disabled={busy} />
+                </div>
+            </div>
+
+            <Separator />
+
+            {/* ── Fees filter ── */}
+            <div className='space-y-3'>
+                <div className='flex items-center justify-between'>
+                    <div>
+                        <div className='font-medium text-white'>Fees Filter</div>
+                        <div className='text-sm text-muted'>Filter by dev's previous token fees</div>
+                    </div>
+                    <Switch checked={feesFilterEnabled} onCheckedChange={setFeesFilterEnabled} disabled={busy} />
+                </div>
+
+                {feesFilterEnabled && (
+                    <div className='space-y-3'>
+                        <div className='space-y-1.5'>
+                            <Label className='text-xs text-muted'>Mode</Label>
+                            <FeesFilterModeToggle
+                                value={feesFilterMode}
+                                onChange={setFeesFilterMode}
+                                disabled={busy}
+                            />
+                            <div className='text-xs text-muted pt-0.5'>
+                                {feesFilterMode === 'total'
+                                    ? 'Sum of fees across all tracked tokens must exceed the threshold'
+                                    : 'Average fee per token must exceed the threshold'
+                                }
+                            </div>
+                        </div>
+
+                        <div className='space-y-1.5'>
+                            <Label className='text-xs text-muted'>Minimum fees (SOL)</Label>
+                            <SuffixInput
+                                value={feesFilterValue}
+                                onChange={setFeesFilterValue}
+                                suffix='SOL'
+                                placeholder='1'
+                                error={!!errors.feesFilterValue}
+                            />
+                            {errors.feesFilterValue && (
+                                <div className='text-xs text-rose-300'>{errors.feesFilterValue}</div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
             <Separator />
@@ -271,7 +400,6 @@ function MainTab({
                     <Switch checked={openInBrowser} onCheckedChange={setOpenInBrowser} disabled={busy} />
                 </div>
 
-                {/* терминал — активен только если включён авто-открытие */}
                 <TerminalPicker
                     value={terminal}
                     onChange={setTerminal}
@@ -287,24 +415,22 @@ function MainTab({
                     <div className='font-medium text-white'>UI Scale</div>
                     <div className='text-sm text-muted'>Adjust interface size</div>
                 </div>
-                
+
                 <div className='space-y-2.5'>
                     <div className='flex items-center justify-between text-sm'>
                         <span className='text-muted'>Scale</span>
                         <span className='text-white font-medium tabular-nums'>{uiScale}%</span>
                     </div>
-                    <div className='relative'>
-                        <input
-                            type='range'
-                            min='75'
-                            max='150'
-                            step='5'
-                            value={uiScale}
-                            onChange={e => setUIScale(Number(e.target.value))}
-                            disabled={busy}
-                            className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
-                        />
-                    </div>
+                    <input
+                        type='range'
+                        min='75'
+                        max='150'
+                        step='5'
+                        value={uiScale}
+                        onChange={e => setUIScale(Number(e.target.value))}
+                        disabled={busy}
+                        className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
+                    />
                     <div className='relative flex text-xs text-muted tabular-nums h-4'>
                         <span className='absolute left-0'>75%</span>
                         <span className='absolute left-1/3 -translate-x-1/2'>100%</span>
@@ -388,8 +514,6 @@ function AccessTab() {
 
     return (
         <div className='space-y-4'>
-
-            {/* ── Status card ── */}
             <div className='rounded-lg bg-white/3 ring-1 ring-white/8 p-3.5 space-y-3'>
                 <div className='flex items-center justify-between'>
                     <div className='flex items-center gap-2'>
@@ -435,7 +559,6 @@ function AccessTab() {
                 )}
             </div>
 
-            {/* ── Renew ── */}
             <a
                 href='https://t.me/neckkero'
                 target='_blank'
@@ -472,7 +595,7 @@ function LabelsTab() {
     }
 
     return (
-        <div className='max-h-80 overflow-y-auto px-1 py-2 space-y-1.5'>
+        <div className='space-y-1.5'>
             {entries.map(([addr, label]) => (
                 <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
                     <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
@@ -507,7 +630,7 @@ function BlacklistTab() {
     }
 
     return (
-        <div className='max-h-80 overflow-y-auto px-1 py-2 space-y-1.5'>
+        <div className='space-y-1.5'>
             {entries.map(addr => {
                 const label = walletLabels[addr]
                 return (
@@ -526,96 +649,6 @@ function BlacklistTab() {
                     </div>
                 )
             })}
-        </div>
-    )
-}
-
-// ─── FAQTab ───────────────────────────────────────────────────────────────────
-
-function FAQTab() {
-    const [copied, setCopied] = React.useState(false)
-    const walletAddress = 'BMi2W2cLPR4HycBsXgpbMuMcr5PYKseRbJ8wMJyeAdXM'
-
-    const copyWallet = async () => {
-        try {
-            await navigator.clipboard.writeText(walletAddress)
-            setCopied(true)
-            toast.success('Wallet address copied')
-            setTimeout(() => setCopied(false), 2000)
-        } catch {
-            toast.error('Failed to copy')
-        }
-    }
-
-    return (
-        <div className='space-y-3'>
-            <Accordion type='single' collapsible className='space-y-2'>
-                <AccordionItem value='refund' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
-                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
-                        Refund Policy
-                    </AccordionTrigger>
-                    <AccordionContent className='text-xs text-muted pb-3'>
-                        All sales are final. We do not offer refunds for license keys once they have been purchased and delivered. Please ensure you understand the product before making a purchase.
-                    </AccordionContent>
-                </AccordionItem>
-
-                <AccordionItem value='stability' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
-                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
-                        Service Stability & Data Sources
-                    </AccordionTrigger>
-                    <AccordionContent className='text-xs text-muted pb-3'>
-                        Spark relies on external third-party data sources and APIs. We do not guarantee uninterrupted service, data accuracy, or availability. External services may experience downtime, rate limits, or changes that are beyond our control. Use this software at your own risk.
-                    </AccordionContent>
-                </AccordionItem>
-
-                <AccordionItem value='liability' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
-                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
-                        Limitation of Liability
-                    </AccordionTrigger>
-                    <AccordionContent className='text-xs text-muted pb-3'>
-                        We are not responsible for any financial losses, missed opportunities, or damages resulting from the use of this software. Trading and investing in cryptocurrencies carries inherent risks. This software is provided "as is" without warranties of any kind.
-                    </AccordionContent>
-                </AccordionItem>
-
-                <AccordionItem value='usage' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
-                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
-                        Acceptable Use
-                    </AccordionTrigger>
-                    <AccordionContent className='text-xs text-muted pb-3'>
-                        This software is for personal use only. You may not share, resell, or redistribute your license key. Violation of these terms may result in immediate license revocation without refund.
-                    </AccordionContent>
-                </AccordionItem>
-
-                <AccordionItem value='payment' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
-                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
-                        Payment Information
-                    </AccordionTrigger>
-                    <AccordionContent className='text-xs text-muted pb-3 space-y-2'>
-                        <p>All payments for license keys are processed via Solana blockchain to our official wallet address:</p>
-                        <div className='flex items-center gap-2 rounded-md bg-white/5 ring-1 ring-white/8 p-2.5'>
-                            <span className='font-mono text-xs text-white flex-1 break-all'>{walletAddress}</span>
-                            <button
-                                type='button'
-                                onClick={() => void copyWallet()}
-                                className='shrink-0 text-muted hover:text-white transition-colors'
-                                title='Copy wallet address'
-                            >
-                                {copied ? <Check className='h-4 w-4 text-emerald-400' /> : <Copy className='h-4 w-4' />}
-                            </button>
-                        </div>
-                        <p className='text-amber-300/80'>⚠️ Always verify the wallet address before sending payment. We are not responsible for funds sent to incorrect addresses.</p>
-                    </AccordionContent>
-                </AccordionItem>
-
-                <AccordionItem value='support' className='rounded-lg bg-white/3 ring-1 ring-white/8 border-0 px-3'>
-                    <AccordionTrigger className='text-sm font-medium text-white hover:no-underline py-3'>
-                        Support & Contact
-                    </AccordionTrigger>
-                    <AccordionContent className='text-xs text-muted pb-3'>
-                        For license purchases, renewals, or technical support, contact us on Telegram: <a href='https://t.me/neckkero' target='_blank' rel='noreferrer' className='text-sky-400 hover:text-sky-300 transition-colors'>@neckkero</a>. Response times may vary.
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
         </div>
     )
 }
@@ -644,32 +677,38 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
             <DialogContent
                 tabIndex={-1}
                 ref={contentRef}
-                className='sm:max-w-115'
+                className='sm:max-w-115 flex flex-col max-h-[85vh]'
                 onOpenAutoFocus={e => {
                     e.preventDefault()
                     requestAnimationFrame(() => contentRef.current?.focus())
                 }}
             >
-                <DialogHeader>
+                {/* ── fixed header ── */}
+                <DialogHeader className='shrink-0'>
                     <DialogTitle>Settings</DialogTitle>
                     <DialogDescription>App settings</DialogDescription>
                 </DialogHeader>
 
-                <TabBar active={tab} onChange={setTab} />
+                {/* ── fixed tab bar ── */}
+                <div className='shrink-0'>
+                    <TabBar active={tab} onChange={setTab} />
+                </div>
 
-                {tab === 'main' && (
-                    <MainTab
-                        settings={settings}
-                        store={store}
-                        busy={busy}
-                        setBusy={setBusy}
-                        onSaved={() => setOpen(false)}
-                    />
-                )}
-                {tab === 'access'    && <AccessTab />}
-                {tab === 'labels'    && <LabelsTab />}
-                {tab === 'blacklist' && <BlacklistTab />}
-                {tab === 'faq'       && <FAQTab />}
+                {/* ── scrollable content ── */}
+                <div className='flex-1 overflow-y-auto min-h-0 pr-1'>
+                    {tab === 'main' && (
+                        <MainTab
+                            settings={settings}
+                            store={store}
+                            busy={busy}
+                            setBusy={setBusy}
+                            onSaved={() => setOpen(false)}
+                        />
+                    )}
+                    {tab === 'access'    && <AccessTab />}
+                    {tab === 'labels'    && <LabelsTab />}
+                    {tab === 'blacklist' && <BlacklistTab />}
+                </div>
             </DialogContent>
         </Dialog>
     )
