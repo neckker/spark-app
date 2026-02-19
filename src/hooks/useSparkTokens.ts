@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { invoke } from '@tauri-apps/api/core'
 
 import { terminalUrl } from '@/lib/refferal'
 import { WS_URL, BACKEND_URL } from '@/config/env'
@@ -203,6 +204,9 @@ function passesFeeFilter(
 
 export function useSparkTokens() {
     const { settings, isBlacklisted } = useSettings()
+
+    const openModeRef = useRef(settings.openMode)
+    useEffect(() => { openModeRef.current = settings.openMode }, [settings.openMode])
 
     const openInBrowserRef = useRef(settings.openInBrowser)
     const terminalRef      = useRef(settings.terminal)
@@ -434,7 +438,14 @@ export function useSparkTokens() {
             setTotalProcessed(totalProcessedRef.current)
 
             const id = newpair.address
-            if (openInBrowserRef.current) void openUrl(terminalUrl(id, terminalRef.current))
+            if (openInBrowserRef.current) {
+                const url = terminalUrl(id, terminalRef.current)
+                if (openModeRef.current === 'current-tab') {
+                    void invoke('set_open_url', { url })
+                } else {
+                    void openUrl(url)
+                }
+            }
 
             setTokens(prevTokens => {
                 const rest = prevTokens.filter(x => x.id !== id)

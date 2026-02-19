@@ -15,10 +15,11 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
-import { useSettings, type Terminal, type FeesFilterMode } from '@/context/SettingsContext'
+import { useSettings, type Terminal, type OpenMode, type FeesFilterMode } from '@/context/SettingsContext'
 import { Ban, Tag, X, KeyRound, RefreshCw, Zap, ShieldCheck, ShieldAlert, Clock4 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/context/AuthContext'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 import axiomIcon from '@/assets/terminals/axiom.svg'
 import padreIcon from '@/assets/terminals/padre.svg'
@@ -228,6 +229,7 @@ function MainTab({
     const [feesFilterMode,    setFeesFilterMode]    = React.useState<FeesFilterMode>(settings.feesFilterMode)
     const [feesFilterValue,   setFeesFilterValue]   = React.useState(String(settings.feesFilterValue))
     const [openInBrowser,     setOpenInBrowser]     = React.useState(settings.openInBrowser)
+    const [openMode,          setOpenMode]          = React.useState<OpenMode>(settings.openMode)
     const [terminal,          setTerminal]          = React.useState<Terminal>(settings.terminal)
     const [uiScale,           setUIScale]           = React.useState(settings.uiScale)
     const [errors,            setErrors]            = React.useState<Errors>({})
@@ -241,6 +243,7 @@ function MainTab({
         setFeesFilterMode(settings.feesFilterMode)
         setFeesFilterValue(String(settings.feesFilterValue))
         setOpenInBrowser(settings.openInBrowser)
+        setOpenMode(settings.openMode)
         setTerminal(settings.terminal)
         setUIScale(settings.uiScale)
         setErrors({})
@@ -286,6 +289,7 @@ function MainTab({
                 feesFilterMode,
                 feesFilterValue:   fees.ok ? fees.value : 1,
                 openInBrowser,
+                openMode,
                 terminal,
                 uiScale,
             }
@@ -412,6 +416,43 @@ function MainTab({
                     {openInBrowser && (
                         <>
                             <Separator className='opacity-40' />
+
+                            {/* Open mode — сверху */}
+                            <div className='space-y-1.5'>
+                                <Label className='text-xs text-muted'>Open mode</Label>
+                                <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+                                    {(['new-tab', 'current-tab'] as OpenMode[]).map(mode => (
+                                        <button
+                                            key={mode} type='button' disabled={busy}
+                                            onClick={() => setOpenMode(mode)}
+                                            className={cn(
+                                                'flex-1 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors',
+                                                openMode === mode ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
+                                                busy && 'opacity-40 cursor-not-allowed'
+                                            )}
+                                        >
+                                            {mode === 'new-tab' ? 'New tab' : 'Current tab'}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {openMode === 'current-tab' && (
+                                    <div className='flex items-center gap-2 rounded-md bg-amber-500/8 ring-1 ring-amber-500/15 px-2.5 py-1.5 mt-1'>
+                                        <span className='text-amber-400 text-xs'>✨</span>
+                                        <p className='text-xs text-amber-300 flex-1'>Requires Spark Extension</p>
+                                        <button
+                                            type='button'
+                                            onClick={() => void openUrl('https://chromewebstore.google.com/detail/cmdanpdcddmkknljllainkehfdbdjfbc')}
+                                            className='text-xs text-sky-400 hover:text-sky-300 transition-colors shrink-0 cursor-pointer'
+                                        >
+                                            Install Extension
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <Separator className='opacity-40' />
+
                             <div className='space-y-1.5'>
                                 <Label className='text-xs text-muted'>Terminal</Label>
                                 <TerminalPicker value={terminal} onChange={setTerminal} disabled={busy} />

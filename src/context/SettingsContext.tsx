@@ -4,7 +4,7 @@ import { LazyStore } from '@tauri-apps/plugin-store'
 // ─── types ────────────────────────────────────────────────────────────────────
 
 export type Terminal = 'axiom' | 'padre' | 'gmgn'
-
+export type OpenMode = 'new-tab' | 'current-tab'
 export type FeesFilterMode = 'total' | 'average'
 
 export interface Settings {
@@ -14,6 +14,7 @@ export interface Settings {
     openInBrowser: boolean
     terminal: Terminal
     uiScale: number
+    openMode: OpenMode
     // new filters
     hideMayhem: boolean
     feesFilterEnabled: boolean
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
     devMax: 100,
     migrationPct: 3,
     openInBrowser: false,
+    openMode: 'new-tab',
     terminal: 'axiom',
     uiScale: 100,
     hideMayhem: false,
@@ -86,6 +88,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const devMax             = (await store.get<number>('devMax'))             ?? DEFAULT_SETTINGS.devMax
             const migrationPct       = (await store.get<number>('migrationPct'))       ?? DEFAULT_SETTINGS.migrationPct
             const openInBrowser      = (await store.get<boolean>('openInBrowser'))     ?? DEFAULT_SETTINGS.openInBrowser
+            const openMode           = (await store.get<OpenMode>('openMode'))         ?? DEFAULT_SETTINGS.openMode
             const terminal           = (await store.get<Terminal>('terminal'))         ?? DEFAULT_SETTINGS.terminal
             const uiScale            = (await store.get<number>('uiScale'))            ?? DEFAULT_SETTINGS.uiScale
             const hideMayhem         = (await store.get<boolean>('hideMayhem'))        ?? DEFAULT_SETTINGS.hideMayhem
@@ -96,7 +99,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const rawBlacklist       = (await store.get<string[]>('blacklist'))        ?? []
 
             setSettings({
-                devMin, devMax, migrationPct, openInBrowser, terminal, uiScale,
+                devMin, devMax, migrationPct, openInBrowser, openMode, terminal, uiScale,
                 hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue,
             })
             setWalletLabels(rawLabels)

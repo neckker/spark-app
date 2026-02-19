@@ -2,6 +2,15 @@
 
 use tauri::command;
 
+mod server;
+use server::PendingUrl;
+use std::sync::{Arc, Mutex};
+
+#[tauri::command]
+fn set_open_url(url: String, state: tauri::State<PendingUrl>) {
+    *state.lock().unwrap() = Some(url);
+}
+
 #[command]
 fn get_device_id() -> Result<String, String> {
     #[cfg(target_os = "windows")]
@@ -52,11 +61,18 @@ fn get_device_id() -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let pending: PendingUrl = Arc::new(Mutex::new(None));
+
     tauri::Builder::default()
+        .manage(pending.clone())
+        .setup(move |_app| {
+            server::start(pending.clone());
+            Ok(())
+        })
         .plugin(tauri_plugin_websocket::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_device_id])
+        .invoke_handler(tauri::generate_handler![get_device_id, set_open_url])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
