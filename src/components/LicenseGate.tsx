@@ -1,9 +1,13 @@
 import { useState } from 'react'
-import { KeyRound, RefreshCw, ShieldAlert, ShieldOff, Clock, MonitorX, AlertCircle, XCircle, Info, ExternalLink } from 'lucide-react'
+import {
+    KeyRound, RefreshCw, ShieldAlert, ShieldOff,
+    Clock, MonitorX, AlertCircle, XCircle, Info, ExternalLink
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { FAQModal } from '@/components/FAQModal'
+import { BACKEND_URL } from '@/config/env'
 import { useAuth, type LicenseStatus } from '@/context/AuthContext'
 
 // --- helpers ---
@@ -17,6 +21,8 @@ function fmtExpiry(tsMs: number | null): string {
     } catch { return '' }
 }
 
+const REFERRAL_CODE_RE = /^[A-Za-z0-9_-]{4,16}$/
+
 // --- screen config ---
 
 type ScreenCfg = {
@@ -28,7 +34,10 @@ type ScreenCfg = {
     showRetry: boolean
 }
 
-function getScreenCfg(status: LicenseStatus, expiresAt: number | null): ScreenCfg {
+// Тип после guard-блока (idle и checking уже отброшены)
+type ActiveLicenseStatus = Exclude<LicenseStatus, 'idle' | 'checking' | 'active'>
+
+function getScreenCfg(status: ActiveLicenseStatus, expiresAt: number | null): ScreenCfg {
     switch (status) {
         case 'expired':
             return {
@@ -68,7 +77,6 @@ function getScreenCfg(status: LicenseStatus, expiresAt: number | null): ScreenCf
             }
         case 'no_license':
         case 'not_activated':
-        default:
             return {
                 icon: KeyRound,
                 iconCls: 'text-zinc-300',
@@ -154,7 +162,6 @@ function ErrorBlock({ status, apiMessage, inputError }: {
     apiMessage: string | null
     inputError: string | null
 }) {
-    // Показываем только если была попытка активации (inputError) или API вернул ошибку
     if (inputError) {
         return (
             <div className='flex items-start gap-2.5 rounded-lg px-3 py-2.5 bg-red-500/10 ring-1 ring-red-500/25'>
@@ -170,7 +177,7 @@ function ErrorBlock({ status, apiMessage, inputError }: {
     const cfg = ERROR_MESSAGES[status]
     if (!cfg) return null
 
-    const s = VARIANT_STYLES[cfg.variant]
+    const s    = VARIANT_STYLES[cfg.variant]
     const Icon = cfg.icon
     const body = status === 'error' && apiMessage ? apiMessage : cfg.body
 
@@ -185,6 +192,109 @@ function ErrorBlock({ status, apiMessage, inputError }: {
     )
 }
 
+// --- ReferralBlock ---
+
+type ReferralPhase =
+    | { phase: 'idle' }
+    | { phase: 'loading' }
+    | { phase: 'success' }
+    | { phase: 'error'; message: string }
+
+const REFERRAL_ERROR_LABELS: Record<string, string> = {
+    code_not_found:  'This referral code does not exist.',
+    own_code:        "You can't use your own referral code.",
+    already_used:    'You have already used a referral code.',
+    not_activated:   'Your license is not activated.',
+    license_expired: 'Your license has expired.',
+    license_revoked: 'Your license has been revoked.',
+}
+
+function ReferralBlock({ deviceId }: { deviceId: string }) {
+    const [code,  setCode]  = useState('')
+    const [state, setState] = useState<ReferralPhase>({ phase: 'idle' })
+
+    const handleApply = async () => {
+        const trimmed = code.trim()
+        if (!trimmed) return
+
+        if (!REFERRAL_CODE_RE.test(trimmed)) {
+            setState({ phase: 'error', message: '4–16 characters: letters, digits, _ or -' })
+            return
+        }
+
+        setState({ phase: 'loading' })
+
+        try {
+            const res  = await fetch(`${BACKEND_URL}/hub/referral/apply`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ device_id: deviceId, code: trimmed }),
+            })
+            const data = await res.json() as { ok: boolean; detail?: string }
+
+            if (!res.ok || !data.ok) {
+                const detail  = data.detail ?? 'error'
+                const message = REFERRAL_ERROR_LABELS[detail] ?? 'Something went wrong. Please try again.'
+                setState({ phase: 'error', message })
+                return
+            }
+
+            setState({ phase: 'success' })
+        } catch {
+            setState({ phase: 'error', message: 'Network error. Please try again.' })
+        }
+    }
+
+    if (state.phase === 'success') {
+        return (
+            <div className='flex items-center gap-2.5 rounded-lg px-3 py-2.5 bg-emerald-500/10 ring-1 ring-emerald-500/25'>
+                <AlertCircle className='h-4 w-4 text-emerald-400 shrink-0' />
+                <div>
+                    <p className='text-xs text-emerald-300 font-medium'>Code applied</p>
+                    <p className='text-xs text-emerald-300/70 mt-0.5'>Referral code was applied successfully.</p>
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className='space-y-2.5'>
+            <div className='flex gap-2'>
+                <Input
+                    value={code}
+                    onChange={e => { setCode(e.target.value); setState({ phase: 'idle' }) }}
+                    placeholder='Referral code (optional)'
+                    className='bg-white/5 border-white/10 font-mono text-sm flex-1'
+                    onKeyDown={e => { if (e.key === 'Enter') void handleApply() }}
+                    disabled={state.phase === 'loading'}
+                    maxLength={16}
+                />
+                <Button
+                    variant='outline'
+                    onClick={handleApply}
+                    disabled={state.phase === 'loading' || !code.trim()}
+                    className='shrink-0'
+                >
+                    {state.phase === 'loading'
+                        ? <Spinner className='h-4 w-4' />
+                        : 'Apply'
+                    }
+                </Button>
+            </div>
+
+            {state.phase === 'error' && (
+                <div className='flex items-start gap-2.5 rounded-lg px-3 py-2.5 bg-red-500/10 ring-1 ring-red-500/25'>
+                    <AlertCircle className='h-4 w-4 text-red-400 shrink-0 mt-0.5' />
+                    <div>
+                        <p className='text-xs text-red-300 font-medium'>Invalid code</p>
+                        <p className='text-xs text-red-300/70 mt-0.5'>{state.message}</p>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
 // --- PurchaseBlock ---
 
 function PurchaseBlock() {
@@ -193,9 +303,7 @@ function PurchaseBlock() {
             <div className='flex items-center justify-between gap-3'>
                 <div className='flex-1 min-w-0'>
                     <p className='text-sm font-medium text-white'>Need a license key?</p>
-                    <p className='text-xs text-muted mt-0.5'>
-                        Get instant access to Spark
-                    </p>
+                    <p className='text-xs text-muted mt-0.5'>Get instant access to Spark</p>
                 </div>
                 <a
                     href='https://t.me/neckkero'
@@ -214,15 +322,44 @@ function PurchaseBlock() {
 // --- LicenseGate ---
 
 export default function LicenseGate({ children }: { children: React.ReactNode }) {
-    const { status, expiresAt, errorMessage, activate, recheck } = useAuth()
+    const { status, expiresAt, errorMessage, deviceId, activate, recheck } = useAuth()
 
-    // Отслеживаем была ли уже попытка активации в этой сессии
-    const [attempted, setAttempted] = useState(false)
-    const [inputKey, setInputKey]   = useState('')
-    const [inputError, setInputError] = useState<string | null>(null)
+    const [attempted,     setAttempted]     = useState(false)
+    const [inputKey,      setInputKey]      = useState('')
+    const [inputError,    setInputError]    = useState<string | null>(null)
+    const [justActivated, setJustActivated] = useState(false)
 
-    if (status === 'active') return <>{children}</>
+    // ── active ────────────────────────────────────────────────────────────────
+    if (status === 'active') {
+        if (justActivated && deviceId) {
+            return (
+                <div className='min-h-screen bg-main flex items-center justify-center p-6'>
+                    <div className='w-full max-w-md space-y-4'>
+                        <div className='flex flex-col items-center gap-3 text-center'>
+                            <div className='h-14 w-14 rounded-2xl flex items-center justify-center bg-emerald-500/10 ring-1 ring-emerald-500/20'>
+                                <KeyRound className='h-7 w-7 text-emerald-400' />
+                            </div>
+                            <div>
+                                <h1 className='text-lg font-semibold text-white'>License Activated!</h1>
+                                <p className='mt-1 text-sm text-muted'>
+                                    Got a referral code? Enter it below, or skip to continue.
+                                </p>
+                            </div>
+                        </div>
 
+                        <ReferralBlock deviceId={deviceId} />
+
+                        <Button className='w-full' onClick={() => setJustActivated(false)}>
+                            Continue
+                        </Button>
+                    </div>
+                </div>
+            )
+        }
+        return <>{children}</>
+    }
+
+    // ── loading ───────────────────────────────────────────────────────────────
     if (status === 'idle' || status === 'checking') {
         return (
             <div className='min-h-screen bg-main flex items-center justify-center'>
@@ -231,9 +368,9 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
         )
     }
 
-    const cfg = getScreenCfg(status, expiresAt)
+    // После этой точки TypeScript знает: status — ActiveLicenseStatus
+    const cfg  = getScreenCfg(status, expiresAt)
     const Icon = cfg.icon
-    const isChecking = (status as string) === 'checking'
 
     const handleActivate = async () => {
         const trimmed = inputKey.trim()
@@ -243,14 +380,13 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
         }
         setInputError(null)
         setAttempted(true)
+        setJustActivated(true)   // выставляем заранее — если активация провалится,
+                                 // status не станет 'active' и экран реферала не покажется
         await activate(trimmed)
     }
 
-    // Для первого запуска (no_license без попытки) — не показываем ошибку
-    const errorStatus: LicenseStatus | null = attempted ? status : null
-
-    // Показываем блок покупки только для статусов, где нужна покупка/обновление
-    const showPurchaseBlock = ['no_license', 'not_activated', 'expired', 'revoked'].includes(status)
+    const errorStatus: LicenseStatus | null  = attempted ? status : null
+    const showPurchaseBlock                  = (['no_license', 'not_activated', 'expired', 'revoked'] as LicenseStatus[]).includes(status)
 
     return (
         <div className='min-h-screen bg-main flex items-center justify-center p-6'>
@@ -272,17 +408,12 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
                     <div className='space-y-2.5'>
                         <Input
                             value={inputKey}
-                            onChange={e => {
-                                setInputKey(e.target.value)
-                                setInputError(null)
-                            }}
+                            onChange={e => { setInputKey(e.target.value); setInputError(null) }}
                             placeholder='xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
                             className='bg-white/5 border-white/10 text-center font-mono text-sm tracking-wider w-full'
                             onKeyDown={e => { if (e.key === 'Enter') void handleActivate() }}
-                            disabled={isChecking}
                         />
 
-                        {/* error block — не показывается при первом запуске */}
                         {(inputError || errorStatus) && (
                             <ErrorBlock
                                 status={errorStatus ?? status}
@@ -294,12 +425,9 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
                         <Button
                             className='w-full'
                             onClick={() => void handleActivate()}
-                            disabled={isChecking || !inputKey.trim()}
+                            disabled={!inputKey.trim()}
                         >
-                            {isChecking
-                                ? <span className='inline-flex items-center gap-2'><Spinner className='h-4 w-4' />Checking…</span>
-                                : 'Activate'
-                            }
+                            Activate
                         </Button>
                     </div>
                 )}
@@ -318,17 +446,15 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
                             variant='outline'
                             className='w-full'
                             onClick={() => { setAttempted(true); void recheck() }}
-                            disabled={isChecking}
                         >
-                            {isChecking
-                                ? <span className='inline-flex items-center gap-2'><Spinner className='h-4 w-4' />Checking…</span>
-                                : <span className='inline-flex items-center gap-2'><RefreshCw className='h-4 w-4' />Retry</span>
-                            }
+                            <span className='inline-flex items-center gap-2'>
+                                <RefreshCw className='h-4 w-4' />
+                                Retry
+                            </span>
                         </Button>
                     </>
                 )}
 
-                {/* purchase block — внизу */}
                 {showPurchaseBlock && <PurchaseBlock />}
 
                 <div className='flex justify-center mt-4'>

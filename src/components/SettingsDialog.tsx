@@ -1,13 +1,15 @@
 import React from 'react'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import toast from 'react-hot-toast'
+
 import {
     Dialog,
     DialogContent,
     DialogDescription,
     DialogHeader,
     DialogTitle,
-    DialogTrigger
+    DialogTrigger,
 } from '@/components/ui/dialog'
-
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -15,24 +17,80 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
-import { useSettings, type Terminal, type OpenMode, type FeesFilterMode } from '@/context/SettingsContext'
-import { Ban, Tag, X, KeyRound, RefreshCw, Zap, ShieldCheck, ShieldAlert, Clock4 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import {
+    useSettings,
+    type Terminal,
+    type OpenMode,
+    type FeesFilterMode,
+} from '@/context/SettingsContext'
 import { useAuth } from '@/context/AuthContext'
-import { openUrl } from '@tauri-apps/plugin-opener'
+import { BACKEND_URL } from '@/config/env'
+import {
+    AlertCircle,
+    Ban,
+    Check,
+    Clock4,
+    Copy,
+    KeyRound,
+    RefreshCw,
+    ShieldAlert,
+    ShieldCheck,
+    Tag,
+    Users,
+    X,
+    Zap,
+} from 'lucide-react'
 
 import axiomIcon from '@/assets/terminals/axiom.svg'
 import padreIcon from '@/assets/terminals/padre.svg'
-import gmgnIcon  from '@/assets/terminals/gmgn.svg'
+import gmgnIcon from '@/assets/terminals/gmgn.svg'
 
-// ─── types ────────────────────────────────────────────────────────────────────
+// --- types ---
 
-type Tab = 'main' | 'access' | 'labels' | 'blacklist'
+type Tab = 'main' | 'access' | 'referral' | 'labels' | 'blacklist'
 
 type FieldKey = 'devMin' | 'devMax' | 'migrationPct' | 'feesFilterValue'
 type Errors = Partial<Record<FieldKey, string>>
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+type ReferralStats = {
+    code: string
+    uses: number
+    created_at: number
+    updated_at: number
+}
+
+// --- constants ---
+
+const TABS: { id: Tab; label: string }[] = [
+    { id: 'main',      label: 'Main'      },
+    { id: 'access',    label: 'Access'    },
+    { id: 'referral',  label: 'Referral'  },
+    { id: 'labels',    label: 'Labels'    },
+    { id: 'blacklist', label: 'Blacklist' },
+]
+
+const TERMINALS: { id: Terminal; label: string; icon: string; url: string }[] = [
+    { id: 'axiom', label: 'Axiom', icon: axiomIcon, url: 'axiom.trade' },
+    { id: 'padre', label: 'Padre', icon: padreIcon, url: 'padre.gg'   },
+    { id: 'gmgn',  label: 'GMGN',  icon: gmgnIcon,  url: 'gmgn.ai'    },
+]
+
+const STATUS_CONFIG = {
+    active:          { icon: ShieldCheck, color: 'text-emerald-400', label: 'Active'          },
+    checking:        { icon: RefreshCw,   color: 'text-zinc-400',    label: 'Checking…'       },
+    expired:         { icon: ShieldAlert, color: 'text-amber-400',   label: 'Expired'         },
+    revoked:         { icon: ShieldAlert, color: 'text-rose-400',    label: 'Revoked'         },
+    device_mismatch: { icon: ShieldAlert, color: 'text-rose-400',    label: 'Device mismatch' },
+    not_activated:   { icon: ShieldAlert, color: 'text-amber-400',   label: 'Not activated'   },
+    no_license:      { icon: ShieldAlert, color: 'text-zinc-400',    label: 'No license'      },
+    error:           { icon: ShieldAlert, color: 'text-rose-400',    label: 'Error'           },
+    idle:            { icon: ShieldAlert, color: 'text-zinc-400',    label: 'Unknown'         },
+} as const
+
+const CODE_RE = /^[A-Za-z0-9_-]{4,16}$/
+const COPY_RESET_MS = 2000
+
+// --- helpers ---
 
 const normalize = (v: string) => v.trim().replace(',', '.')
 
@@ -52,7 +110,16 @@ const parseSol = (raw: string) => {
     return { ok: true as const, value: n }
 }
 
-// ─── SectionLabel ─────────────────────────────────────────────────────────────
+const fmtDate = (tsMs: number) =>
+    tsMs
+        ? new Date(tsMs).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+        })
+        : '—'
+
+// --- shared ui components ---
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
     return (
@@ -65,13 +132,18 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     )
 }
 
-// ─── SuffixInput ──────────────────────────────────────────────────────────────
-
 function SuffixInput({
-    value, onChange, suffix, placeholder, error
+    value,
+    onChange,
+    suffix,
+    placeholder,
+    error,
 }: {
-    value: string; onChange: (v: string) => void
-    suffix: string; placeholder?: string; error?: boolean
+    value: string
+    onChange: (v: string) => void
+    suffix: string
+    placeholder?: string
+    error?: boolean
 }) {
     return (
         <div className='relative'>
@@ -85,7 +157,7 @@ function SuffixInput({
                 'absolute right-0 top-0 h-full px-3',
                 'flex items-center text-white',
                 'text-xs font-semibold tracking-wide',
-                'border-l border-white/10 bg-white/5'
+                'border-l border-white/10 bg-white/5',
             )}>
                 {suffix}
             </div>
@@ -93,10 +165,12 @@ function SuffixInput({
     )
 }
 
-// ─── RowSwitch ────────────────────────────────────────────────────────────────
-
 function RowSwitch({
-    label, description, checked, onCheckedChange, disabled
+    label,
+    description,
+    checked,
+    onCheckedChange,
+    disabled,
 }: {
     label: string
     description?: string
@@ -108,31 +182,47 @@ function RowSwitch({
         <div className='flex items-center justify-between gap-4'>
             <div className='min-w-0'>
                 <div className='text-sm font-medium text-white'>{label}</div>
-                {description && <div className='text-xs text-muted mt-0.5'>{description}</div>}
+                {description && (
+                    <div className='text-xs text-muted mt-0.5'>{description}</div>
+                )}
             </div>
-            <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} className='shrink-0' />
+            <Switch
+                checked={checked}
+                onCheckedChange={onCheckedChange}
+                disabled={disabled}
+                className='shrink-0'
+            />
         </div>
     )
 }
 
-// ─── TabBar ───────────────────────────────────────────────────────────────────
+function CodeErrorBlock({ message }: { message: string }) {
+    return (
+        <div className='flex items-start gap-2.5 rounded-lg px-3 py-2.5 bg-red-500/10 ring-1 ring-red-500/25'>
+            <AlertCircle className='h-4 w-4 text-red-400 shrink-0 mt-0.5' />
+            <div>
+                <p className='text-xs text-red-300 font-medium'>Invalid code</p>
+                <p className='text-xs text-red-300/70 mt-0.5'>{message}</p>
+            </div>
+        </div>
+    )
+}
+
+// --- tab bar ---
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
-    const tabs: { id: Tab; label: string }[] = [
-        { id: 'main',      label: 'Main' },
-        { id: 'access',    label: 'Access' },
-        { id: 'labels',    label: 'Labels' },
-        { id: 'blacklist', label: 'Blacklist' },
-    ]
     return (
         <div className='flex gap-1 p-1 rounded-lg bg-white/5 border border-white/8'>
-            {tabs.map(t => (
+            {TABS.map(t => (
                 <button
-                    key={t.id} type='button'
+                    key={t.id}
+                    type='button'
                     onClick={() => onChange(t.id)}
                     className={cn(
-                        'flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                        active === t.id ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300'
+                        'flex-1 rounded-md px-2 py-1.5 text-xs cursor-pointer font-medium transition-colors',
+                        active === t.id
+                            ? 'bg-white/10 text-white'
+                            : 'text-muted hover:text-zinc-300',
                     )}
                 >
                     {t.label}
@@ -142,49 +232,50 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
     )
 }
 
-// ─── TerminalPicker ───────────────────────────────────────────────────────────
+// --- terminal picker ---
 
-const TERMINALS: { id: Terminal; label: string; icon: string; url: string }[] = [
-    { id: 'axiom', label: 'Axiom', icon: axiomIcon, url: 'axiom.trade' },
-    { id: 'padre', label: 'Padre', icon: padreIcon, url: 'padre.gg'   },
-    { id: 'gmgn',  label: 'GMGN',  icon: gmgnIcon,  url: 'gmgn.ai'    },
-]
-
-function TerminalPicker({ value, onChange, disabled }: {
+function TerminalPicker({
+    value,
+    onChange,
+    disabled,
+}: {
     value: Terminal
     onChange: (t: Terminal) => void
     disabled?: boolean
 }) {
     return (
         <div className='grid grid-cols-3 gap-2'>
-            {TERMINALS.map(t => {
-                const active = value === t.id
-                return (
-                    <button
-                        key={t.id} type='button' disabled={disabled}
-                        onClick={() => onChange(t.id)}
-                        className={cn(
-                            'flex flex-col items-center gap-1.5 rounded-lg py-3 px-2',
-                            'ring-1 transition-all duration-150 text-xs font-medium',
-                            active
-                                ? 'bg-white/8 ring-white/25 text-white'
-                                : 'bg-white/3 ring-white/8 text-muted hover:bg-white/6 hover:text-zinc-300',
-                            disabled && 'opacity-40 cursor-not-allowed'
-                        )}
-                    >
-                        <img src={t.icon} alt={t.label} className='h-5 w-5' draggable={false} />
-                        <span>{t.label}</span>
-                        <span className='text-[10px] text-muted font-normal'>{t.url}</span>
-                    </button>
-                )
-            })}
+            {TERMINALS.map(t => (
+                <button
+                    key={t.id}
+                    type='button'
+                    disabled={disabled}
+                    onClick={() => onChange(t.id)}
+                    className={cn(
+                        'flex flex-col items-center gap-1.5 rounded-lg py-3 px-2',
+                        'ring-1 transition-all duration-150 text-xs font-medium cursor-pointer',
+                        value === t.id
+                            ? 'bg-white/8 ring-white/25 text-white'
+                            : 'bg-white/3 ring-white/8 text-muted hover:bg-white/6 hover:text-zinc-300',
+                        disabled && 'opacity-40 cursor-not-allowed',
+                    )}
+                >
+                    <img src={t.icon} alt={t.label} className='h-5 w-5' draggable={false} />
+                    <span>{t.label}</span>
+                    <span className='text-[10px] text-muted font-normal'>{t.url}</span>
+                </button>
+            ))}
         </div>
     )
 }
 
-// ─── FeesFilterModeToggle ─────────────────────────────────────────────────────
+// --- fees filter mode toggle ---
 
-function FeesFilterModeToggle({ value, onChange, disabled }: {
+function FeesFilterModeToggle({
+    value,
+    onChange,
+    disabled,
+}: {
     value: FeesFilterMode
     onChange: (v: FeesFilterMode) => void
     disabled?: boolean
@@ -193,12 +284,16 @@ function FeesFilterModeToggle({ value, onChange, disabled }: {
         <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
             {(['total', 'average'] as FeesFilterMode[]).map(mode => (
                 <button
-                    key={mode} type='button' disabled={disabled}
+                    key={mode}
+                    type='button'
+                    disabled={disabled}
                     onClick={() => onChange(mode)}
                     className={cn(
-                        'flex-1 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors',
-                        value === mode ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
-                        disabled && 'opacity-40 cursor-not-allowed'
+                        'flex-1 rounded-[5px] px-3 py-1 cursor-pointer text-xs font-medium transition-colors',
+                        value === mode
+                            ? 'bg-white/10 text-white'
+                            : 'text-muted hover:text-zinc-300',
+                        disabled && 'opacity-40 cursor-not-allowed',
                     )}
                 >
                     {mode === 'total' ? 'Total' : 'Average'}
@@ -208,10 +303,14 @@ function FeesFilterModeToggle({ value, onChange, disabled }: {
     )
 }
 
-// ─── MainTab ──────────────────────────────────────────────────────────────────
+// --- main tab ---
 
 function MainTab({
-    settings, store, busy, setBusy, onSaved,
+    settings,
+    store,
+    busy,
+    setBusy,
+    onSaved,
 }: {
     settings: ReturnType<typeof useSettings>['settings']
     store: ReturnType<typeof useSettings>['store']
@@ -253,6 +352,7 @@ function MainTab({
         const next: Errors = {}
         const min = parsePercent(devMin)
         const max = parsePercent(devMax)
+        const fees = parseSol(feesFilterValue)
 
         const migCleaned = normalize(migration)
         let migValue = 3
@@ -269,30 +369,32 @@ function MainTab({
             }
         }
 
-        const fees = parseSol(feesFilterValue)
         if (!min.ok) next.devMin = min.error
         if (!max.ok) next.devMax = max.error
         if (feesFilterEnabled && !fees.ok) next.feesFilterValue = fees.error
+
         if (min.ok && max.ok && min.value > max.value) {
             next.devMin = 'Min > Max'
             next.devMax = 'Max < Min'
         }
+
         setErrors(next)
+
         return {
             ok: Object.keys(next).length === 0,
             values: {
-                devMin:            min.ok ? min.value : 0,
-                devMax:            max.ok ? max.value : 100,
-                migrationPct:      migValue,
+                devMin:           min.ok ? min.value : 0,
+                devMax:           max.ok ? max.value : 100,
+                migrationPct:     migValue,
                 hideMayhem,
                 feesFilterEnabled,
                 feesFilterMode,
-                feesFilterValue:   fees.ok ? fees.value : 1,
+                feesFilterValue:  fees.ok ? fees.value : 1,
                 openInBrowser,
                 openMode,
                 terminal,
                 uiScale,
-            }
+            },
         }
     }
 
@@ -314,34 +416,47 @@ function MainTab({
 
     return (
         <div className='space-y-5'>
-
-            {/* ══ FILTERS ══════════════════════════════════════════════════════ */}
             <div className='space-y-4 px-1'>
                 <SectionLabel>Filters</SectionLabel>
 
-                {/* Dev Holdings */}
                 <div className='space-y-2'>
                     <Label>Dev Holdings %</Label>
                     <div className='grid grid-cols-2 gap-3'>
-                        <SuffixInput value={devMin} onChange={setDevMin} suffix='MIN' placeholder='0'   error={!!errors.devMin} />
-                        <SuffixInput value={devMax} onChange={setDevMax} suffix='MAX' placeholder='100' error={!!errors.devMax} />
+                        <SuffixInput
+                            value={devMin}
+                            onChange={setDevMin}
+                            suffix='MIN'
+                            placeholder='0'
+                            error={!!errors.devMin}
+                        />
+                        <SuffixInput
+                            value={devMax}
+                            onChange={setDevMax}
+                            suffix='MAX'
+                            placeholder='100'
+                            error={!!errors.devMax}
+                        />
                     </div>
                     {(errors.devMin || errors.devMax) && (
                         <p className='text-xs text-rose-300'>{errors.devMin || errors.devMax}</p>
                     )}
                 </div>
 
-                {/* Migration */}
                 <div className='space-y-2'>
                     <Label>Migration rate %</Label>
-                    <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='3' error={!!errors.migrationPct} />
+                    <SuffixInput
+                        value={migration}
+                        onChange={setMigration}
+                        suffix='MIN'
+                        placeholder='3'
+                        error={!!errors.migrationPct}
+                    />
                     {errors.migrationPct
                         ? <p className='text-xs text-rose-300'>{errors.migrationPct}</p>
                         : <p className='text-xs text-muted'>Minimum allowed value is 3%</p>
                     }
                 </div>
 
-                {/* Mayhem */}
                 <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5'>
                     <RowSwitch
                         label='Hide Mayhem tokens'
@@ -352,7 +467,6 @@ function MainTab({
                     />
                 </div>
 
-                {/* Fees filter */}
                 <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
                     <RowSwitch
                         label='Fees filter'
@@ -361,7 +475,6 @@ function MainTab({
                         onCheckedChange={setFeesFilterEnabled}
                         disabled={busy}
                     />
-
                     {feesFilterEnabled && (
                         <>
                             <Separator className='opacity-40' />
@@ -380,7 +493,6 @@ function MainTab({
                                         }
                                     </p>
                                 </div>
-
                                 <div className='space-y-1.5'>
                                     <Label className='text-xs text-muted'>Threshold</Label>
                                     <SuffixInput
@@ -400,11 +512,9 @@ function MainTab({
                 </div>
             </div>
 
-            {/* ══ APP SETTINGS ═════════════════════════════════════════════════ */}
             <div className='space-y-4 px-1'>
                 <SectionLabel>App Settings</SectionLabel>
 
-                {/* Auto-open + terminal picker */}
                 <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
                     <RowSwitch
                         label='Auto-open token'
@@ -416,26 +526,27 @@ function MainTab({
                     {openInBrowser && (
                         <>
                             <Separator className='opacity-40' />
-
-                            {/* Open mode — сверху */}
                             <div className='space-y-1.5'>
                                 <Label className='text-xs text-muted'>Open mode</Label>
                                 <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
                                     {(['new-tab', 'current-tab'] as OpenMode[]).map(mode => (
                                         <button
-                                            key={mode} type='button' disabled={busy}
+                                            key={mode}
+                                            type='button'
+                                            disabled={busy}
                                             onClick={() => setOpenMode(mode)}
                                             className={cn(
-                                                'flex-1 rounded-[5px] px-3 py-1 text-xs font-medium transition-colors',
-                                                openMode === mode ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
-                                                busy && 'opacity-40 cursor-not-allowed'
+                                                'flex-1 rounded-[5px] px-3 py-1 text-xs cursor-pointer font-medium transition-colors',
+                                                openMode === mode
+                                                    ? 'bg-white/10 text-white'
+                                                    : 'text-muted hover:text-zinc-300',
+                                                busy && 'opacity-40 cursor-not-allowed',
                                             )}
                                         >
-                                            {mode === 'new-tab' ? 'New tab' : 'Current tab'}
+                                            {mode === 'new-tab' ? 'New Tab' : 'Current Tab'}
                                         </button>
                                     ))}
                                 </div>
-
                                 {openMode === 'current-tab' && (
                                     <div className='flex items-center gap-2 rounded-md bg-amber-500/8 ring-1 ring-amber-500/15 px-2.5 py-1.5 mt-1'>
                                         <span className='text-amber-400 text-xs'>✨</span>
@@ -450,9 +561,7 @@ function MainTab({
                                     </div>
                                 )}
                             </div>
-
                             <Separator className='opacity-40' />
-
                             <div className='space-y-1.5'>
                                 <Label className='text-xs text-muted'>Terminal</Label>
                                 <TerminalPicker value={terminal} onChange={setTerminal} disabled={busy} />
@@ -461,7 +570,6 @@ function MainTab({
                     )}
                 </div>
 
-                {/* UI Scale */}
                 <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-3 space-y-3'>
                     <div className='flex items-center justify-between'>
                         <div>
@@ -471,7 +579,10 @@ function MainTab({
                         <span className='text-sm font-semibold text-white tabular-nums'>{uiScale}%</span>
                     </div>
                     <input
-                        type='range' min='75' max='150' step='5'
+                        type='range'
+                        min='75'
+                        max='150'
+                        step='5'
                         value={uiScale}
                         onChange={e => setUIScale(Number(e.target.value))}
                         disabled={busy}
@@ -486,22 +597,19 @@ function MainTab({
                 </div>
             </div>
 
-            {/* ── Save ── */}
             <div className='flex justify-end pt-1'>
                 <Button variant='default' onClick={save} disabled={busy}>
-                    {busy ? (
-                        <span className='inline-flex items-center gap-2'>
-                            <Spinner className='h-4 w-4' />
-                            Saving…
-                        </span>
-                    ) : 'Save'}
+                    {busy
+                        ? <span className='inline-flex items-center gap-2'><Spinner className='h-4 w-4' />Saving…</span>
+                        : 'Save'
+                    }
                 </Button>
             </div>
         </div>
     )
 }
 
-// ─── AccessTab ────────────────────────────────────────────────────────────────
+// --- access tab ---
 
 function AccessTab() {
     const { status, licenseKey, expiresAt, errorMessage } = useAuth()
@@ -533,21 +641,9 @@ function AccessTab() {
     }, [expiresAt])
 
     const isActive = status === 'active'
-
-    const statusConfig = {
-        active:          { icon: ShieldCheck, color: 'text-emerald-400', label: 'Active'          },
-        checking:        { icon: RefreshCw,   color: 'text-zinc-400',    label: 'Checking…'       },
-        expired:         { icon: ShieldAlert, color: 'text-amber-400',   label: 'Expired'         },
-        revoked:         { icon: ShieldAlert, color: 'text-rose-400',    label: 'Revoked'         },
-        device_mismatch: { icon: ShieldAlert, color: 'text-rose-400',    label: 'Device mismatch' },
-        not_activated:   { icon: ShieldAlert, color: 'text-amber-400',   label: 'Not activated'   },
-        no_license:      { icon: ShieldAlert, color: 'text-zinc-400',    label: 'No license'      },
-        error:           { icon: ShieldAlert, color: 'text-rose-400',    label: 'Error'           },
-        idle:            { icon: ShieldAlert, color: 'text-zinc-400',    label: 'Unknown'         },
-    } as const
-
-    const cfg     = statusConfig[status] ?? statusConfig.idle
+    const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.idle
     const CfgIcon = cfg.icon
+
     const progressColor =
         progressPct > 30 ? 'bg-emerald-500' :
         progressPct > 10 ? 'bg-amber-400'   : 'bg-rose-500'
@@ -557,8 +653,14 @@ function AccessTab() {
             <div className='rounded-lg bg-white/3 ring-1 ring-white/8 p-3.5 space-y-3'>
                 <div className='flex items-center justify-between'>
                     <div className='flex items-center gap-2'>
-                        <CfgIcon className={cn('h-4 w-4', cfg.color, status === 'checking' && 'animate-spin')} />
-                        <span className={cn('text-sm font-medium', cfg.color)}>{cfg.label}</span>
+                        <CfgIcon className={cn(
+                            'h-4 w-4',
+                            cfg.color,
+                            status === 'checking' && 'animate-spin',
+                        )} />
+                        <span className={cn('text-sm font-medium', cfg.color)}>
+                            {cfg.label}
+                        </span>
                     </div>
                     {isActive && timeLeft && (
                         <span className='inline-flex items-center gap-1 text-xs text-muted'>
@@ -568,6 +670,7 @@ function AccessTab() {
                         </span>
                     )}
                 </div>
+
                 {isActive && (
                     <div className='h-1 rounded-full bg-white/8 overflow-hidden'>
                         <div
@@ -576,25 +679,28 @@ function AccessTab() {
                         />
                     </div>
                 )}
+
                 {licenseKey && (
                     <div className='flex items-center gap-2'>
                         <KeyRound className='h-3.5 w-3.5 text-muted shrink-0' />
                         <span className='font-mono text-xs text-muted truncate'>{licenseKey}</span>
                     </div>
                 )}
+
                 {errorMessage && !isActive && (
                     <p className='text-xs text-rose-300'>{errorMessage}</p>
                 )}
             </div>
             <a
                 href='https://t.me/neckkero'
-                target='_blank' rel='noreferrer'
+                target='_blank'
+                rel='noreferrer'
                 className={cn(
                     'flex items-center justify-center gap-2 w-full',
                     'rounded-md px-4 py-2 text-sm font-medium',
                     'bg-white/5 ring-1 ring-white/10',
                     'hover:bg-white/8 hover:ring-white/20',
-                    'transition-colors text-white'
+                    'transition-colors text-white',
                 )}
             >
                 <Zap className='h-4 w-4 text-amber-400' />
@@ -604,7 +710,247 @@ function AccessTab() {
     )
 }
 
-// ─── LabelsTab ────────────────────────────────────────────────────────────────
+// --- referral tab ---
+
+function ReferralTab() {
+    const { deviceId } = useAuth()
+
+    const [stats,        setStats]        = React.useState<ReferralStats | null>(null)
+    const [loadingStats, setLoadingStats] = React.useState(true)
+    const [codeInput,    setCodeInput]    = React.useState('')
+    const [codeError,    setCodeError]    = React.useState<string | null>(null)
+    const [saving,       setSaving]       = React.useState(false)
+    const [editMode,     setEditMode]     = React.useState(false)
+    const [copied,       setCopied]       = React.useState(false)
+
+    React.useEffect(() => {
+        if (!deviceId) return
+        void loadStats()
+    }, [deviceId])
+
+    const loadStats = async () => {
+        if (!deviceId) return
+        setLoadingStats(true)
+        try {
+            const res  = await fetch(`${BACKEND_URL}/hub/referral/stats?device_id=${encodeURIComponent(deviceId)}`)
+            const data = await res.json() as { ok: boolean } & Partial<ReferralStats>
+            if (data.ok && data.code) {
+                setStats({
+                    code:       data.code,
+                    uses:       data.uses       ?? 0,
+                    created_at: data.created_at ?? 0,
+                    updated_at: data.updated_at ?? 0,
+                })
+            } else {
+                setStats(null)
+            }
+        } catch {
+            setStats(null)
+        } finally {
+            setLoadingStats(false)
+        }
+    }
+
+    const validateCode = (v: string): string | null => {
+        if (!v.trim()) return 'Please enter a code'
+        if (!CODE_RE.test(v.trim())) return '4–16 characters: letters, digits, _ or -'
+        return null
+    }
+
+    const handleCreate = async () => {
+        const trimmed = codeInput.trim()
+        const err = validateCode(trimmed)
+        if (err) { setCodeError(err); return }
+        if (!deviceId || saving) return
+
+        setSaving(true)
+        setCodeError(null)
+        try {
+            const res = await fetch(`${BACKEND_URL}/hub/referral/new`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ device_id: deviceId, code: trimmed }),
+            })
+            const data = await res.json() as { ok?: boolean; detail?: string } & Partial<ReferralStats>
+
+            if (!res.ok) {
+                if (data.detail === 'code_taken') setCodeError('This code is already taken.')
+                else if (data.detail === 'code_already_exists') setCodeError('You already have a referral code.')
+                else setCodeError('Something went wrong.')
+                return
+            }
+
+            setStats({
+                code:       data.code       ?? trimmed,
+                uses:       data.uses       ?? 0,
+                created_at: data.created_at ?? 0,
+                updated_at: data.updated_at ?? 0,
+            })
+            setCodeInput('')
+            toast.success('Referral code created!')
+        } catch {
+            setCodeError('Network error. Please try again.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const handleChange = async () => {
+        const trimmed = codeInput.trim()
+        const err = validateCode(trimmed)
+        if (err) { setCodeError(err); return }
+        if (!deviceId || saving) return
+
+        setSaving(true)
+        setCodeError(null)
+        try {
+            const res = await fetch(`${BACKEND_URL}/hub/referral/change`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ device_id: deviceId, new_code: trimmed }),
+            })
+            const data = await res.json() as { ok?: boolean; detail?: string } & Partial<ReferralStats>
+
+            if (!res.ok) {
+                if (data.detail === 'code_taken') setCodeError('This code is already taken.')
+                else if (data.detail === 'same_code') setCodeError('This is already your current code.')
+                else setCodeError('Something went wrong.')
+                return
+            }
+
+            setStats(prev =>
+                prev
+                    ? { ...prev, code: data.code ?? trimmed, updated_at: data.updated_at ?? prev.updated_at }
+                    : null
+            )
+            setCodeInput('')
+            setEditMode(false)
+            toast.success('Referral code updated!')
+        } catch {
+            setCodeError('Network error. Please try again.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const copyCode = (code: string) => {
+        void navigator.clipboard.writeText(code)
+        setCopied(true)
+        setTimeout(() => setCopied(false), COPY_RESET_MS)
+    }
+
+    const cancelEdit = () => {
+        setEditMode(false)
+        setCodeInput('')
+        setCodeError(null)
+    }
+
+    return (
+        <div className='space-y-4 p-1'>
+            <SectionLabel>My Referral Code</SectionLabel>
+
+            {loadingStats ? (
+                <div className='flex items-center justify-center py-8'>
+                    <Spinner className='h-5 w-5 text-zinc-500' />
+                </div>
+
+            ) : stats && !editMode ? (
+                // existing code card
+                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 p-3.5 space-y-3'>
+                    <div className='flex items-center gap-2'>
+                        <span className='font-mono text-base font-bold text-white tracking-widest flex-1 select-all'>
+                            {stats.code}
+                        </span>
+                        <button
+                            type='button'
+                            title={copied ? 'Copied!' : 'Copy code'}
+                            onClick={() => copyCode(stats.code)}
+                            className={cn(
+                                'p-1.5 rounded-md transition-colors cursor-pointer',
+                                copied
+                                    ? 'text-emerald-400 bg-emerald-500/10'
+                                    : 'text-muted hover:text-white hover:bg-white/8',
+                            )}
+                        >
+                            {copied
+                                ? <Check className='h-3.5 w-3.5' />
+                                : <Copy className='h-3.5 w-3.5' />
+                            }
+                        </button>
+                        <button
+                            type='button'
+                            onClick={() => { setEditMode(true); setCodeInput(stats.code) }}
+                            className='text-xs font-medium cursor-pointer text-muted hover:text-white transition-colors px-2 py-1 rounded-md bg-white/5 ring-1 ring-white/8 hover:bg-white/8'
+                        >
+                            Change
+                        </button>
+                    </div>
+
+                    <Separator className='opacity-20' />
+
+                    <div className='flex items-center justify-between text-xs text-muted'>
+                        <div className='flex items-center gap-1.5'>
+                            <Users className='h-3.5 w-3.5 shrink-0' />
+                            <span className='font-medium uppercase'>
+                                <span className='text-white tabular-nums'>{stats.uses}</span>
+                                {' '}referral{stats.uses !== 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        <span>{fmtDate(stats.created_at)}</span>
+                    </div>
+                </div>
+
+            ) : (
+                // create / change form
+                <div className='space-y-2.5'>
+                    <div className='flex gap-2'>
+                        <Input
+                            value={codeInput}
+                            onChange={e => { setCodeInput(e.target.value); setCodeError(null) }}
+                            placeholder={editMode ? 'New code…' : 'Choose your code…'}
+                            className={cn(
+                                'bg-white/5 border-white/10 font-mono text-sm flex-1',
+                                codeError && 'border-rose-500/60',
+                            )}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') void (editMode ? handleChange() : handleCreate())
+                            }}
+                            disabled={saving}
+                            maxLength={16}
+                            autoFocus
+                        />
+                        <Button
+                            onClick={() => void (editMode ? handleChange() : handleCreate())}
+                            disabled={saving || !codeInput.trim()}
+                        >
+                            {saving
+                                ? <Spinner className='h-4 w-4' />
+                                : editMode ? 'Save' : 'Create'
+                            }
+                        </Button>
+                        {editMode && (
+                            <Button
+                                variant='ghost'
+                                onClick={cancelEdit}
+                                disabled={saving}
+                                className='text-muted hover:text-white'
+                            >
+                                Cancel
+                            </Button>
+                        )}
+                    </div>
+
+                    {codeError
+                        ? <CodeErrorBlock message={codeError} />
+                        : <p className='text-xs text-muted px-0.5'>4–16 characters: letters, digits, _ or -</p>
+                    }
+                </div>
+            )}
+        </div>
+    )
+}
+
+// --- labels tab ---
 
 function LabelsTab() {
     const { walletLabels, removeWalletLabel } = useSettings()
@@ -623,11 +969,15 @@ function LabelsTab() {
     return (
         <div className='space-y-1.5 p-1'>
             {entries.map(([addr, label]) => (
-                <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                <div
+                    key={addr}
+                    className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'
+                >
                     <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
                     <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
                     <button
-                        type='button' title='Remove label'
+                        type='button'
+                        title='Remove label'
                         onClick={() => { void removeWalletLabel(addr); toast.success('Label removed') }}
                         className='shrink-0 text-muted hover:text-rose-400 transition-colors'
                     >
@@ -639,7 +989,7 @@ function LabelsTab() {
     )
 }
 
-// ─── BlacklistTab ─────────────────────────────────────────────────────────────
+// --- blacklist tab ---
 
 function BlacklistTab() {
     const { blacklist, walletLabels, removeFromBlacklist } = useSettings()
@@ -660,11 +1010,17 @@ function BlacklistTab() {
             {entries.map(addr => {
                 const label = walletLabels[addr]
                 return (
-                    <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                        {label && <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>}
+                    <div
+                        key={addr}
+                        className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'
+                    >
+                        {label && (
+                            <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+                        )}
                         <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
                         <button
-                            type='button' title='Remove from blacklist'
+                            type='button'
+                            title='Remove from blacklist'
                             onClick={() => { void removeFromBlacklist(addr); toast.success('Removed from blacklist') }}
                             className='shrink-0 text-muted hover:text-rose-400 transition-colors'
                         >
@@ -677,7 +1033,7 @@ function BlacklistTab() {
     )
 }
 
-// ─── SettingsDialog ───────────────────────────────────────────────────────────
+// --- settings dialog ---
 
 export default function SettingsDialog({ children }: { children: React.ReactNode }) {
     const { settings, store, ready } = useSettings()
@@ -727,6 +1083,7 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
                         />
                     )}
                     {tab === 'access'    && <AccessTab />}
+                    {tab === 'referral'  && <ReferralTab />}
                     {tab === 'labels'    && <LabelsTab />}
                     {tab === 'blacklist' && <BlacklistTab />}
                 </div>

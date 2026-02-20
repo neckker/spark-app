@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { LazyStore } from '@tauri-apps/plugin-store'
-import { LICENSE_API } from '@/config/env'
+import { BACKEND_URL } from '@/config/env'
 
 // --- types ---
 
@@ -43,18 +43,17 @@ async function getDeviceId(): Promise<string> {
 /** Маппинг detail-строк от API → LicenseStatus */
 function mapApiError(detail: string): LicenseStatus {
     switch (detail) {
-        case 'license_expired':              return 'expired'
-        case 'license_revoked':              return 'revoked'
-        case 'already_activated_on_another_device':
-        case 'device_mismatch':              return 'device_mismatch'
-        case 'not_activated':                return 'not_activated'
-        case 'license_not_found':            return 'no_license'
-        default:                             return 'error'
+        case 'license_expired':   return 'expired'
+        case 'license_revoked':   return 'revoked'
+        case 'already_activated': return 'device_mismatch'
+        case 'not_activated':     return 'not_activated'
+        case 'not_found':         return 'no_license'
+        default:                  return 'error'
     }
 }
 
 async function apiPost<T>(path: string, body: object): Promise<T> {
-    const res = await fetch(`${LICENSE_API}${path}`, {
+    const res = await fetch(`${BACKEND_URL}${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -102,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         set({ status: 'checking', errorMessage: null })
         try {
             const data = await apiPost<{ ok: boolean; expires_at: number }>(
-                '/license/public/validate',
+                '/hub/license/validate',
                 { license_key: key, device_id: deviceId }
             )
             set({ status: 'active', expiresAt: data.expires_at })
@@ -139,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         try {
             const data = await apiPost<{ ok: boolean; expires_at: number }>(
-                '/license/public/activate',
+                '/hub/license/activate',
                 { license_key: trimmed, device_id: deviceId }
             )
             await store.set('license_key', trimmed)
