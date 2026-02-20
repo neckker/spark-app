@@ -965,7 +965,7 @@ function ReferralTab() {
                 {/* wallet row */}
                 <div className='flex items-center justify-between gap-2'>
                     <span className='font-mono text-xs text-white truncate'>
-                        {stats.wallet.slice(0, 8)}…{stats.wallet.slice(-8)}
+                        {stats.wallet.slice(0, 6)}…{stats.wallet.slice(-6)}
                     </span>
                     <div className='flex items-center gap-1.5 shrink-0'>
                         <button
