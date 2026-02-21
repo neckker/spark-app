@@ -13,9 +13,10 @@ type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
 type PriceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type TokenEvent = {
-    address: string
+    pair: string
     name: string
     ticker: string
+    address: string
     devhold: number
     protocol: 'pump' | 'bonk' | string
     market_cap: number
@@ -507,10 +508,12 @@ export function useSparkTokens() {
             totalProcessedRef.current += 1
             setTotalProcessed(totalProcessedRef.current)
 
+            const pair = newpair.pair
             const id = newpair.address
 
             if (openInBrowserRef.current) {
-                const url = terminalUrl(id, terminalRef.current)
+                const url = terminalUrl(id, pair, terminalRef.current, openModeRef.current)
+
                 if (openModeRef.current === 'current-tab') {
                     void invoke('set_open_url', { url })
                 } else {
