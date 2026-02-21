@@ -116,9 +116,10 @@ function isWsTokenMessage(x: unknown): x is WsTokenMessage {
     if (!np || typeof np !== 'object') return false
     const p = np as Record<string, unknown>
     if (
-        typeof p.address !== 'string' ||
+        typeof p.pair !== 'string' ||
         typeof p.name !== 'string' ||
         typeof p.ticker !== 'string' ||
+        typeof p.address !== 'string' ||
         typeof p.devhold !== 'number' ||
         typeof p.protocol !== 'string' ||
         (typeof p.metadata_url !== 'string' && p.metadata_url !== null)
@@ -203,16 +204,24 @@ function passesFeeFilter(
     mode: 'total' | 'average',
     threshold: number,
 ): boolean {
-    if (!enabled) return true
+    if (!enabled) {
+        return true
+    }
 
-    const withFees = lastTokens.filter(t => t.total_fees !== null) as (LastToken & { total_fees: number })[]
+    const withFees = lastTokens.filter(
+        t => t.total_fees !== null
+    ) as (LastToken & { total_fees: number })[]
 
-    // no fee data — can't filter, let through
-    if (withFees.length === 0) return true
+    // no fee data — block the token
+    if (withFees.length === 0) {
+        return false
+    }
 
     const sum = withFees.reduce((acc, t) => acc + t.total_fees, 0)
 
-    if (mode === 'total') return sum >= threshold
+    if (mode === 'total') {
+        return sum >= threshold
+    }
 
     const avg = sum / withFees.length
     return avg >= threshold
@@ -496,14 +505,35 @@ export function useSparkTokens() {
                 feesFilterValue,
             } = filtersRef.current
 
-            // filters
-            if (newpair.devhold < devMin || newpair.devhold > devMax) return
-            if (dev.tokens.rate < migrationPct) return
-            if (isBlacklistedRef.current(dev.address)) return
-            if (hideMayhem && newpair.is_mayhem_mode) return
+            // --- filters ---
+
+            if (newpair.devhold < devMin) {
+                return
+            }
+
+            if (newpair.devhold > devMax) {
+                return
+            }
+
+            if (dev.tokens.rate < migrationPct) {
+                return
+            }
+
+            if (isBlacklistedRef.current(dev.address)) {
+                return
+            }
+
+            if (hideMayhem && newpair.is_mayhem_mode) {
+                return
+            }
 
             const lastTokens = normalizeLastTokens(last_tokens)
-            if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue)) return
+
+            if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue)) {
+                return
+            }
+
+            // --- passed all filters ---
 
             totalProcessedRef.current += 1
             setTotalProcessed(totalProcessedRef.current)
