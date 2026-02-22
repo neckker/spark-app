@@ -138,3 +138,6 @@ dist
 
 # env files
 .env.*
+
+# claude
+.claude/
