@@ -451,6 +451,13 @@ export function useSparkTokens() {
 
     const connect = (attempt = 0) => {
         clearReconnect()
+
+        // Close previous WebSocket without triggering onclose reconnect
+        if (wsRef.current) {
+            wsRef.current.onclose = null
+            wsRef.current.close()
+        }
+
         stopAllMeta()
         setStatus('connecting')
 
@@ -581,8 +588,11 @@ export function useSparkTokens() {
             clearReconnect()
             stopAllMeta()
             stopPricePolling()
-            wsRef.current?.close()
-            wsRef.current = null
+            if (wsRef.current) {
+                wsRef.current.onclose = null  // prevent zombie reconnect timer
+                wsRef.current.close()
+                wsRef.current = null
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
