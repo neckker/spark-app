@@ -3,12 +3,14 @@
 use tauri::command;
 
 mod server;
-use server::PendingUrl;
+use server::UrlSenderHandle;
 use std::sync::{Arc, Mutex};
 
 #[tauri::command]
-fn set_open_url(url: String, state: tauri::State<PendingUrl>) {
-    *state.lock().unwrap() = Some(url);
+fn set_open_url(url: String, state: tauri::State<UrlSenderHandle>) {
+    if let Some(tx) = state.lock().unwrap().as_ref() {
+        let _ = tx.send(url);
+    }
 }
 
 #[command]
@@ -61,12 +63,12 @@ fn get_device_id() -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let pending: PendingUrl = Arc::new(Mutex::new(None));
+    let handle: UrlSenderHandle = Arc::new(Mutex::new(None));
 
     tauri::Builder::default()
-        .manage(pending.clone())
+        .manage(handle.clone())
         .setup(move |_app| {
-            server::start(pending.clone());
+            server::start(handle.clone());
             Ok(())
         })
         .plugin(tauri_plugin_websocket::init())
