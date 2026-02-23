@@ -280,9 +280,10 @@ export function useSparkTokens() {
                 type: 'config',
                 migration_pct: settings.migrationPct,
                 dev_hold_min: settings.devMin,
+                dev_hold_max: settings.devMax,
             }))
         }
-    }, [settings.migrationPct, settings.devMin])
+    }, [settings.migrationPct, settings.devMin, settings.devMax])
 
     // --- internal refs ---
 
@@ -478,11 +479,12 @@ export function useSparkTokens() {
 
         ws.onopen = () => {
             setStatus('open')
-            const { migrationPct, devMin } = filtersRef.current
+            const { migrationPct, devMin, devMax } = filtersRef.current
             ws.send(JSON.stringify({
                 type: 'config',
                 migration_pct: migrationPct,
                 dev_hold_min: devMin,
+                dev_hold_max: devMax,
             }))
         }
         ws.onerror = () => setStatus('error')
