@@ -389,10 +389,11 @@ function MainTab({
         }
 
         if (!min.ok) next.devMin = min.error
+        else if (min.value < 0.1) next.devMin = 'Minimum 0.1%'
         if (!max.ok) next.devMax = max.error
         if (feesFilterEnabled && !fees.ok) next.feesFilterValue = fees.error
 
-        if (min.ok && max.ok && min.value > max.value) {
+        if (min.ok && max.ok && !next.devMin && min.value > max.value) {
             next.devMin = 'Min > Max'
             next.devMax = 'Max < Min'
         }
@@ -402,8 +403,8 @@ function MainTab({
         return {
             ok: Object.keys(next).length === 0,
             values: {
-                devMin:           min.ok ? min.value : 0,
-                devMax:           max.ok ? max.value : 100,
+                devMin:           min.ok ? Math.max(0.1, min.value) : 0.1,
+                devMax:           max.ok ? max.value : 77,
                 migrationPct:     migValue,
                 hideMayhem,
                 feesFilterEnabled,
@@ -441,8 +442,8 @@ function MainTab({
                 <div className='space-y-2'>
                     <Label>Dev Holdings %</Label>
                     <div className='grid grid-cols-2 gap-3'>
-                        <SuffixInput value={devMin} onChange={setDevMin} suffix='MIN' placeholder='0'   error={!!errors.devMin} />
-                        <SuffixInput value={devMax} onChange={setDevMax} suffix='MAX' placeholder='100' error={!!errors.devMax} />
+                        <SuffixInput value={devMin} onChange={setDevMin} suffix='MIN' placeholder='0.1' error={!!errors.devMin} />
+                        <SuffixInput value={devMax} onChange={setDevMax} suffix='MAX' placeholder='77'  error={!!errors.devMax} />
                     </div>
                     {(errors.devMin || errors.devMax) && (
                         <p className='text-xs text-rose-300'>{errors.devMin || errors.devMax}</p>
@@ -451,7 +452,7 @@ function MainTab({
 
                 <div className='space-y-2'>
                     <Label>Migration rate %</Label>
-                    <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='3' error={!!errors.migrationPct} />
+                    <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='15' error={!!errors.migrationPct} />
                     {errors.migrationPct
                         ? <p className='text-xs text-rose-300'>{errors.migrationPct}</p>
                         : <p className='text-xs text-muted'>Minimum allowed value is 3%</p>

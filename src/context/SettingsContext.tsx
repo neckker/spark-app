@@ -23,9 +23,9 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-    devMin: 0,
-    devMax: 100,
-    migrationPct: 3,
+    devMin: 0.1,
+    devMax: 77,
+    migrationPct: 15,
     openInBrowser: false,
     openMode: 'new-tab',
     terminal: 'axiom',
