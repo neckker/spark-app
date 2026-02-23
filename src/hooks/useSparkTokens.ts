@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { terminalUrl } from '@/lib/refferal'
 import { WS_URL, BACKEND_URL } from '@/config/env'
 import { useSettings } from '@/context/SettingsContext'
+import { useNotificationSound } from '@/hooks/useNotificationSound'
 
 // --- types ---
 
@@ -231,9 +232,11 @@ function passesFeeFilter(
 
 export function useSparkTokens() {
     const { settings, isBlacklisted } = useSettings()
+    const playSound = useNotificationSound(settings.soundEnabled, settings.soundVolume)
 
     // --- refs for latest settings (avoid stale closure in ws.onmessage) ---
 
+    const playSoundRef = useRef(playSound)
     const openModeRef = useRef(settings.openMode)
     const openInBrowserRef = useRef(settings.openInBrowser)
     const terminalRef = useRef(settings.terminal)
@@ -248,6 +251,7 @@ export function useSparkTokens() {
     })
     const isBlacklistedRef = useRef(isBlacklisted)
 
+    useEffect(() => { playSoundRef.current = playSound }, [playSound])
     useEffect(() => { openModeRef.current = settings.openMode }, [settings.openMode])
     useEffect(() => { openInBrowserRef.current = settings.openInBrowser }, [settings.openInBrowser])
     useEffect(() => { terminalRef.current = settings.terminal }, [settings.terminal])
@@ -564,6 +568,7 @@ export function useSparkTokens() {
 
             // --- passed all filters ---
 
+            playSoundRef.current()
             totalProcessedRef.current += 1
             setTotalProcessed(totalProcessedRef.current)
 

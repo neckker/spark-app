@@ -20,6 +20,9 @@ export interface Settings {
     feesFilterEnabled: boolean
     feesFilterMode: FeesFilterMode
     feesFilterValue: number
+    // sound notifications
+    soundEnabled: boolean
+    soundVolume: number // 0-100
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +37,8 @@ export const DEFAULT_SETTINGS: Settings = {
     feesFilterEnabled: false,
     feesFilterMode: 'total',
     feesFilterValue: 1,
+    soundEnabled: true,
+    soundVolume: 70,
 }
 
 /** address → human label (до 10 символов) */
@@ -95,12 +100,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const feesFilterEnabled  = (await store.get<boolean>('feesFilterEnabled')) ?? DEFAULT_SETTINGS.feesFilterEnabled
             const feesFilterMode     = (await store.get<FeesFilterMode>('feesFilterMode')) ?? DEFAULT_SETTINGS.feesFilterMode
             const feesFilterValue    = (await store.get<number>('feesFilterValue'))    ?? DEFAULT_SETTINGS.feesFilterValue
+            const soundEnabled       = (await store.get<boolean>('soundEnabled'))      ?? DEFAULT_SETTINGS.soundEnabled
+            const soundVolume        = (await store.get<number>('soundVolume'))         ?? DEFAULT_SETTINGS.soundVolume
             const rawLabels          = (await store.get<WalletLabels>('walletLabels')) ?? {}
             const rawBlacklist       = (await store.get<string[]>('blacklist'))        ?? []
 
             setSettings({
                 devMin, devMax, migrationPct, openInBrowser, openMode, terminal, uiScale,
                 hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue,
+                soundEnabled, soundVolume,
             })
             setWalletLabels(rawLabels)
             setBlacklist(new Set(rawBlacklist))
