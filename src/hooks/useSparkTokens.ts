@@ -272,13 +272,17 @@ export function useSparkTokens() {
         settings.feesFilterValue,
     ])
 
-    // notify server when migrationPct changes
+    // notify server when filter thresholds change
     useEffect(() => {
         const ws = wsRef.current
         if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'config', migration_pct: settings.migrationPct }))
+            ws.send(JSON.stringify({
+                type: 'config',
+                migration_pct: settings.migrationPct,
+                dev_hold_min: settings.devMin,
+            }))
         }
-    }, [settings.migrationPct])
+    }, [settings.migrationPct, settings.devMin])
 
     // --- internal refs ---
 
@@ -474,8 +478,12 @@ export function useSparkTokens() {
 
         ws.onopen = () => {
             setStatus('open')
-            const pct = filtersRef.current.migrationPct
-            ws.send(JSON.stringify({ type: 'config', migration_pct: pct }))
+            const { migrationPct, devMin } = filtersRef.current
+            ws.send(JSON.stringify({
+                type: 'config',
+                migration_pct: migrationPct,
+                dev_hold_min: devMin,
+            }))
         }
         ws.onerror = () => setStatus('error')
 
