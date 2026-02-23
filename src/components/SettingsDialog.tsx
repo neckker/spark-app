@@ -350,6 +350,8 @@ function MainTab({
     const [openMode,          setOpenMode]          = React.useState<OpenMode>(settings.openMode)
     const [terminal,          setTerminal]          = React.useState<Terminal>(settings.terminal)
     const [uiScale,           setUIScale]           = React.useState(settings.uiScale)
+    const [soundEnabled,      setSoundEnabled]      = React.useState(settings.soundEnabled)
+    const [soundVolume,       setSoundVolume]       = React.useState(settings.soundVolume)
     const [errors,            setErrors]            = React.useState<Errors>({})
 
     React.useEffect(() => {
@@ -364,6 +366,8 @@ function MainTab({
         setOpenMode(settings.openMode)
         setTerminal(settings.terminal)
         setUIScale(settings.uiScale)
+        setSoundEnabled(settings.soundEnabled)
+        setSoundVolume(settings.soundVolume)
         setErrors({})
     }, [settings])
 
@@ -414,6 +418,8 @@ function MainTab({
                 openMode,
                 terminal,
                 uiScale,
+                soundEnabled,
+                soundVolume,
             },
         }
     }
@@ -555,6 +561,41 @@ function MainTab({
                             <div className='space-y-1.5'>
                                 <Label className='text-xs text-muted'>Terminal</Label>
                                 <TerminalPicker value={terminal} onChange={setTerminal} disabled={busy} />
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                    <RowSwitch
+                        label='Sound notifications'
+                        description='Play a sound when a new token passes filters'
+                        checked={soundEnabled}
+                        onCheckedChange={setSoundEnabled}
+                        disabled={busy}
+                    />
+                    {soundEnabled && (
+                        <>
+                            <Separator className='opacity-40' />
+                            <div className='space-y-1.5'>
+                                <div className='flex items-center justify-between'>
+                                    <Label className='text-xs text-muted'>Volume</Label>
+                                    <span className='text-xs font-semibold text-white tabular-nums'>{soundVolume}%</span>
+                                </div>
+                                <input
+                                    type='range' min='0' max='100' step='5'
+                                    value={soundVolume}
+                                    onChange={e => setSoundVolume(Number(e.target.value))}
+                                    disabled={busy}
+                                    className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
+                                />
+                                <div className='relative flex text-[11px] text-muted tabular-nums h-4'>
+                                    <span className='absolute left-0'>0%</span>
+                                    <span className='absolute left-1/4 -translate-x-1/2'>25%</span>
+                                    <span className='absolute left-1/2 -translate-x-1/2'>50%</span>
+                                    <span className='absolute left-3/4 -translate-x-1/2'>75%</span>
+                                    <span className='absolute right-0'>100%</span>
+                                </div>
                             </div>
                         </>
                     )}
