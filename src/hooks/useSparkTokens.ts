@@ -272,6 +272,14 @@ export function useSparkTokens() {
         settings.feesFilterValue,
     ])
 
+    // notify server when migrationPct changes
+    useEffect(() => {
+        const ws = wsRef.current
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'config', migration_pct: settings.migrationPct }))
+        }
+    }, [settings.migrationPct])
+
     // --- internal refs ---
 
     const wsRef = useRef<WebSocket | null>(null)
@@ -464,7 +472,11 @@ export function useSparkTokens() {
         const ws = new WebSocket(WS_URL)
         wsRef.current = ws
 
-        ws.onopen = () => setStatus('open')
+        ws.onopen = () => {
+            setStatus('open')
+            const pct = filtersRef.current.migrationPct
+            ws.send(JSON.stringify({ type: 'config', migration_pct: pct }))
+        }
         ws.onerror = () => setStatus('error')
 
         ws.onclose = () => {
