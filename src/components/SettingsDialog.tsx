@@ -546,7 +546,7 @@ function MainTab({
                                 {openMode === 'current-tab' && (
                                     <div className='flex items-center gap-2 rounded-md bg-amber-500/8 ring-1 ring-amber-500/15 px-2.5 py-1.5 mt-1'>
                                         <span className='text-amber-400 text-xs'>✨</span>
-                                        <p className='text-xs text-amber-300 flex-1'>Requires Spark Extension</p>
+                                        <p className='text-xs text-amber-300 flex-1'>Requires <span className='font-semibold text-white'>Spark Opener</span> Extension</p>
                                         <button
                                             type='button'
                                             onClick={() => void openUrl('https://chromewebstore.google.com/detail/cmdanpdcddmkknljllainkehfdbdjfbc')}
