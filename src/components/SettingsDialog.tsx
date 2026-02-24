@@ -714,7 +714,7 @@ function AccessTab() {
                 )}
             </div>
             <a
-                href='https://t.me/neckkero'
+                href='https://t.me/solythbot'
                 target='_blank'
                 rel='noreferrer'
                 className={cn(

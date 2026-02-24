@@ -100,7 +100,7 @@ function TelegramBtn() {
                 'text-xs font-semibold text-sky-100',
                 'hover:bg-sky-400/15 active:bg-sky-400/20 transition-colors'
             )}
-            title='https://t.me/neckkero'
+            title='lead app dev'
         >
             <span className='inline-block h-2 w-2 rounded-full bg-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.55)]' />
             Telegram

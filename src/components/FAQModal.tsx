@@ -144,12 +144,12 @@ function FAQContent() {
                     For license purchases, renewals, or technical support,
                     contact us on Telegram:{' '}
                     <a
-                        href='https://t.me/neckkero'
+                        href='https://t.me/solythbot'
                         target='_blank'
                         rel='noreferrer'
                         className='text-sky-400 hover:text-sky-300 transition-colors'
                     >
-                        @neckkero
+                        @solythbot
                     </a>
                     . Response times may vary.
                 </AccordionContent>
