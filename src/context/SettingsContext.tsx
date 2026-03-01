@@ -11,6 +11,7 @@ export interface Settings {
     devMin: number
     devMax: number
     migrationPct: number
+    minAvgAthMcap: number
     openInBrowser: boolean
     terminal: Terminal
     uiScale: number
@@ -23,12 +24,18 @@ export interface Settings {
     // sound notifications
     soundEnabled: boolean
     soundVolume: number // 0-100
+    // community filters
+    minCommunityMembers: number
+    maxCommunityMembers: number
+    minCreatorFollowers: number
+    maxCommunityAge: number // hours, 0 = disabled
 }
 
 export const DEFAULT_SETTINGS: Settings = {
     devMin: 0.1,
     devMax: 77,
     migrationPct: 15,
+    minAvgAthMcap: 0,
     openInBrowser: false,
     openMode: 'new-tab',
     terminal: 'axiom',
@@ -39,10 +46,17 @@ export const DEFAULT_SETTINGS: Settings = {
     feesFilterValue: 1,
     soundEnabled: true,
     soundVolume: 70,
+    minCommunityMembers: 0,
+    maxCommunityMembers: 0,
+    minCreatorFollowers: 0,
+    maxCommunityAge: 0,
 }
 
 /** address → human label (до 10 символов) */
 export type WalletLabels = Record<string, string>
+
+/** creator_id → custom display name */
+export type CreatorLabels = Record<string, string>
 
 interface SettingsCtx {
     settings: Settings
@@ -54,6 +68,11 @@ interface SettingsCtx {
     walletLabels: WalletLabels
     setWalletLabel: (address: string, label: string) => Promise<void>
     removeWalletLabel: (address: string) => Promise<void>
+
+    // creator labels (community creators)
+    creatorLabels: CreatorLabels
+    setCreatorLabel: (creatorId: string, label: string) => Promise<void>
+    removeCreatorLabel: (creatorId: string) => Promise<void>
 
     // blacklist
     blacklist: Set<string>
@@ -72,6 +91,9 @@ const SettingsContext = createContext<SettingsCtx>({
     walletLabels: {},
     setWalletLabel: async () => {},
     removeWalletLabel: async () => {},
+    creatorLabels: {},
+    setCreatorLabel: async () => {},
+    removeCreatorLabel: async () => {},
     blacklist: new Set(),
     addToBlacklist: async () => {},
     removeFromBlacklist: async () => {},
@@ -82,16 +104,18 @@ const SettingsContext = createContext<SettingsCtx>({
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const [store]       = useState(() => new LazyStore('settings.json'))
-    const [settings, setSettings]         = useState<Settings>(DEFAULT_SETTINGS)
-    const [walletLabels, setWalletLabels] = useState<WalletLabels>({})
-    const [blacklist, setBlacklist]       = useState<Set<string>>(new Set())
-    const [ready, setReady]               = useState(false)
+    const [settings, setSettings]           = useState<Settings>(DEFAULT_SETTINGS)
+    const [walletLabels, setWalletLabels]   = useState<WalletLabels>({})
+    const [creatorLabels, setCreatorLabels] = useState<CreatorLabels>({})
+    const [blacklist, setBlacklist]         = useState<Set<string>>(new Set())
+    const [ready, setReady]                 = useState(false)
 
     useEffect(() => {
         async function load() {
             const devMin             = (await store.get<number>('devMin'))             ?? DEFAULT_SETTINGS.devMin
             const devMax             = (await store.get<number>('devMax'))             ?? DEFAULT_SETTINGS.devMax
             const migrationPct       = (await store.get<number>('migrationPct'))       ?? DEFAULT_SETTINGS.migrationPct
+            const minAvgAthMcap      = (await store.get<number>('minAvgAthMcap'))     ?? DEFAULT_SETTINGS.minAvgAthMcap
             const openInBrowser      = (await store.get<boolean>('openInBrowser'))     ?? DEFAULT_SETTINGS.openInBrowser
             const openMode           = (await store.get<OpenMode>('openMode'))         ?? DEFAULT_SETTINGS.openMode
             const terminal           = (await store.get<Terminal>('terminal'))         ?? DEFAULT_SETTINGS.terminal
@@ -100,17 +124,25 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const feesFilterEnabled  = (await store.get<boolean>('feesFilterEnabled')) ?? DEFAULT_SETTINGS.feesFilterEnabled
             const feesFilterMode     = (await store.get<FeesFilterMode>('feesFilterMode')) ?? DEFAULT_SETTINGS.feesFilterMode
             const feesFilterValue    = (await store.get<number>('feesFilterValue'))    ?? DEFAULT_SETTINGS.feesFilterValue
-            const soundEnabled       = (await store.get<boolean>('soundEnabled'))      ?? DEFAULT_SETTINGS.soundEnabled
-            const soundVolume        = (await store.get<number>('soundVolume'))         ?? DEFAULT_SETTINGS.soundVolume
-            const rawLabels          = (await store.get<WalletLabels>('walletLabels')) ?? {}
-            const rawBlacklist       = (await store.get<string[]>('blacklist'))        ?? []
+            const soundEnabled          = (await store.get<boolean>('soundEnabled'))         ?? DEFAULT_SETTINGS.soundEnabled
+            const soundVolume           = (await store.get<number>('soundVolume'))            ?? DEFAULT_SETTINGS.soundVolume
+            const minCommunityMembers   = (await store.get<number>('minCommunityMembers'))   ?? DEFAULT_SETTINGS.minCommunityMembers
+            const maxCommunityMembers   = (await store.get<number>('maxCommunityMembers'))   ?? DEFAULT_SETTINGS.maxCommunityMembers
+            const minCreatorFollowers   = (await store.get<number>('minCreatorFollowers'))   ?? DEFAULT_SETTINGS.minCreatorFollowers
+            const maxCommunityAge       = (await store.get<number>('maxCommunityAge'))       ?? DEFAULT_SETTINGS.maxCommunityAge
+            const rawLabels             = (await store.get<WalletLabels>('walletLabels'))    ?? {}
+            const rawCreatorLabels   = (await store.get<CreatorLabels>('creatorLabels')) ?? {}
+            const rawBlacklist       = (await store.get<string[]>('blacklist'))          ?? []
 
             setSettings({
-                devMin, devMax, migrationPct, openInBrowser, openMode, terminal, uiScale,
+                devMin, devMax, migrationPct, minAvgAthMcap,
+                openInBrowser, openMode, terminal, uiScale,
                 hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue,
                 soundEnabled, soundVolume,
+                minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge,
             })
             setWalletLabels(rawLabels)
+            setCreatorLabels(rawCreatorLabels)
             setBlacklist(new Set(rawBlacklist))
             setReady(true)
         }
@@ -140,6 +172,22 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         await store.save()
     }
 
+    const setCreatorLabel = async (creatorId: string, label: string) => {
+        const trimmed = label.trim().slice(0, 16)
+        const next = { ...creatorLabels, [creatorId]: trimmed }
+        setCreatorLabels(next)
+        await store.set('creatorLabels', next)
+        await store.save()
+    }
+
+    const removeCreatorLabel = async (creatorId: string) => {
+        const next = { ...creatorLabels }
+        delete next[creatorId]
+        setCreatorLabels(next)
+        await store.set('creatorLabels', next)
+        await store.save()
+    }
+
     const addToBlacklist = async (address: string) => {
         const next = new Set(blacklist).add(address)
         setBlacklist(next)
@@ -164,6 +212,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         <SettingsContext.Provider value={{
             settings, store, ready, patch,
             walletLabels, setWalletLabel, removeWalletLabel,
+            creatorLabels, setCreatorLabel, removeCreatorLabel,
             blacklist, addToBlacklist, removeFromBlacklist, isBlacklisted,
         }}>
             {children}

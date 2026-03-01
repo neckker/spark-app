@@ -16,7 +16,6 @@ function Layout() {
         totalProcessed,
         clearTokens,
         solPriceUsd,
-        solPriceStatus
     } = useSparkTokens()
 
     const { settings } = useSettings()
@@ -29,7 +28,6 @@ function Layout() {
                         status={status}
                         pingMs={pingMs}
                         solPriceUsd={solPriceUsd}
-                        solPriceStatus={solPriceStatus}
                         totalProcessed={totalProcessed}
                         onClear={clearTokens}
                     />

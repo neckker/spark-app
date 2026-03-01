@@ -126,7 +126,7 @@ const ERROR_MESSAGES: Partial<Record<LicenseStatus, {
         variant: 'info',
         icon: Info,
         title: 'Not activated',
-        body: 'Key exists but has not been activated yet — submit to activate.',
+        body: 'Key exists but has not been activated yet - submit to activate.',
     },
     error: {
         variant: 'warn',

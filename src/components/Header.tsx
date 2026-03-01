@@ -5,7 +5,6 @@ import SettingsDialog from '@/components/SettingsDialog'
 import { Bolt, Hash, Rss, Settings2, Trash2 } from 'lucide-react'
 
 type PingQuality = 'excellent' | 'good' | 'meh' | 'bad' | 'na'
-type PriceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 function getQuality(pingMs: number | null): PingQuality {
     if (pingMs === null) return 'na'
@@ -16,7 +15,7 @@ function getQuality(pingMs: number | null): PingQuality {
 }
 
 function fmtUsd(n: number) {
-    if (!Number.isFinite(n)) return '—'
+    if (!Number.isFinite(n)) return '0.0'
     return n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2)
 }
 
@@ -112,14 +111,12 @@ export default function Header({
     status,
     pingMs,
     solPriceUsd,
-    solPriceStatus,
     totalProcessed,
     onClear
 }: {
     status: string
     pingMs: number | null
     solPriceUsd: number | null
-    solPriceStatus: PriceStatus
     totalProcessed: number
     onClear: () => void
 }) {
@@ -147,12 +144,7 @@ export default function Header({
                 : 'Offline'
             : `${pingMs ?? '0'}ms`
 
-    const solText =
-        solPriceStatus === 'ready' && solPriceUsd !== null
-            ? `$${fmtUsd(solPriceUsd)}`
-            : solPriceStatus === 'loading'
-              ? '…'
-              : '0.00'
+    const solText = solPriceUsd !== null ? `$${fmtUsd(solPriceUsd)}` : '0.0'
 
     return (
         <div className='flex items-center gap-2'>
@@ -169,7 +161,7 @@ export default function Header({
                     icon={Bolt}
                     text={solText}
                     tone='sol'
-                    title='SOL price (USD), обновляется раз в 30s'
+                    title='SOL price (USD)'
                 />
 
                 <Badge

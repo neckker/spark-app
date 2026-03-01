@@ -1,6 +1,7 @@
 import React from 'react'
 import toast from 'react-hot-toast'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { useDebouncedCallback } from 'use-debounce'
 
 import {
     Dialog,
@@ -38,6 +39,7 @@ import {
     Tag,
     Users,
     X,
+    Info,
     Zap,
 } from 'lucide-react'
 
@@ -47,9 +49,9 @@ import gmgnIcon from '@/assets/terminals/gmgn.svg'
 
 // --- types ---
 
-type Tab = 'main' | 'access' | 'referral' | 'labels' | 'blacklist'
+type Tab = 'main' | 'referral' | 'labels' | 'blacklist'
 
-type FieldKey = 'devMin' | 'devMax' | 'migrationPct' | 'feesFilterValue'
+type FieldKey = 'devMin' | 'devMax' | 'migrationPct' | 'minAvgAthMcap' | 'feesFilterValue' | 'minCommunityMembers' | 'maxCommunityMembers' | 'minCreatorFollowers' | 'maxCommunityAge'
 type Errors = Partial<Record<FieldKey, string>>
 
 type RecentUsage = {
@@ -72,7 +74,6 @@ type EditMode = 'code' | 'wallet' | 'both' | null
 
 const TABS: { id: Tab; label: string }[] = [
     { id: 'main',      label: 'Main'      },
-    { id: 'access',    label: 'Access'    },
     { id: 'referral',  label: 'Referral'  },
     { id: 'labels',    label: 'Labels'    },
     { id: 'blacklist', label: 'Blacklist' },
@@ -120,6 +121,14 @@ const parseSol = (raw: string) => {
     return { ok: true as const, value: n }
 }
 
+const parsePositiveNum = (raw: string) => {
+    const cleaned = normalize(raw)
+    if (!cleaned) return { ok: true as const, value: 0 }
+    const n = Number(cleaned)
+    if (!Number.isFinite(n) || n < 0) return { ok: false as const, error: 'Must be ≥ 0' }
+    return { ok: true as const, value: Math.floor(n) }
+}
+
 const fmtDate = (tsMs: number) =>
     tsMs
         ? new Date(tsMs).toLocaleDateString('en-US', {
@@ -127,7 +136,7 @@ const fmtDate = (tsMs: number) =>
             day: 'numeric',
             year: 'numeric',
         })
-        : '—'
+        : '0.0'
 
 // --- shared ui ---
 
@@ -324,44 +333,59 @@ function FeesFilterModeToggle({
 
 // --- main tab ---
 
-function MainTab({
-    settings,
-    store,
-    busy,
-    setBusy,
-    onSaved,
-}: {
+type MainView = 'filters' | 'app'
+
+function MainTab({ settings, store }: {
     settings: ReturnType<typeof useSettings>['settings']
     store: ReturnType<typeof useSettings>['store']
-    busy: boolean
-    setBusy: (v: boolean) => void
-    onSaved: () => void
 }) {
     const { patch } = useSettings()
+    const [view, setView] = React.useState<MainView>('filters')
 
-    const [devMin,            setDevMin]            = React.useState(String(settings.devMin))
-    const [devMax,            setDevMax]            = React.useState(String(settings.devMax))
-    const [migration,         setMigration]         = React.useState(String(settings.migrationPct))
-    const [hideMayhem,        setHideMayhem]        = React.useState(settings.hideMayhem)
-    const [feesFilterEnabled, setFeesFilterEnabled] = React.useState(settings.feesFilterEnabled)
-    const [feesFilterMode,    setFeesFilterMode]    = React.useState<FeesFilterMode>(settings.feesFilterMode)
-    const [feesFilterValue,   setFeesFilterValue]   = React.useState(String(settings.feesFilterValue))
-    const [openInBrowser,     setOpenInBrowser]     = React.useState(settings.openInBrowser)
-    const [openMode,          setOpenMode]          = React.useState<OpenMode>(settings.openMode)
-    const [terminal,          setTerminal]          = React.useState<Terminal>(settings.terminal)
-    const [uiScale,           setUIScale]           = React.useState(settings.uiScale)
-    const [soundEnabled,      setSoundEnabled]      = React.useState(settings.soundEnabled)
-    const [soundVolume,       setSoundVolume]       = React.useState(settings.soundVolume)
-    const [errors,            setErrors]            = React.useState<Errors>({})
+    // --- filter state ---
+    const [devMin,               setDevMin]               = React.useState(String(settings.devMin))
+    const [devMax,               setDevMax]               = React.useState(String(settings.devMax))
+    const [migration,            setMigration]            = React.useState(String(settings.migrationPct))
+    const [minAthMcap,           setMinAthMcap]           = React.useState(String(settings.minAvgAthMcap))
+    const [hideMayhem,           setHideMayhem]           = React.useState(settings.hideMayhem)
+    const [feesFilterEnabled,    setFeesFilterEnabled]    = React.useState(settings.feesFilterEnabled)
+    const [feesFilterMode,       setFeesFilterMode]       = React.useState<FeesFilterMode>(settings.feesFilterMode)
+    const [feesFilterValue,      setFeesFilterValue]      = React.useState(String(settings.feesFilterValue))
+    const [minCommunityMembers,  setMinCommunityMembers]  = React.useState(String(settings.minCommunityMembers))
+    const [maxCommunityMembers,  setMaxCommunityMembers]  = React.useState(String(settings.maxCommunityMembers))
+    const [minCreatorFollowers,  setMinCreatorFollowers]  = React.useState(String(settings.minCreatorFollowers))
+    const [maxCommunityAge,     setMaxCommunityAge]     = React.useState(String(settings.maxCommunityAge))
+    // --- app settings state ---
+    const [openInBrowser, setOpenInBrowser] = React.useState(settings.openInBrowser)
+    const [openMode,      setOpenMode]      = React.useState<OpenMode>(settings.openMode)
+    const [terminal,      setTerminal]      = React.useState<Terminal>(settings.terminal)
+    const [uiScale,       setUIScale]       = React.useState(settings.uiScale)
+    const [soundEnabled,  setSoundEnabled]  = React.useState(settings.soundEnabled)
+    const [soundVolume,   setSoundVolume]   = React.useState(settings.soundVolume)
 
+    const [errors, setErrors] = React.useState<Errors>({})
+    const skipAutoSave = React.useRef(true)
+    const isSaving = React.useRef(false)
+
+    // Sync from external settings changes (skip when we initiated the save)
     React.useEffect(() => {
+        if (isSaving.current) {
+            isSaving.current = false
+            return
+        }
+        skipAutoSave.current = true
         setDevMin(String(settings.devMin))
         setDevMax(String(settings.devMax))
         setMigration(String(settings.migrationPct))
+        setMinAthMcap(String(settings.minAvgAthMcap))
         setHideMayhem(settings.hideMayhem)
         setFeesFilterEnabled(settings.feesFilterEnabled)
         setFeesFilterMode(settings.feesFilterMode)
         setFeesFilterValue(String(settings.feesFilterValue))
+        setMinCommunityMembers(String(settings.minCommunityMembers))
+        setMaxCommunityMembers(String(settings.maxCommunityMembers))
+        setMinCreatorFollowers(String(settings.minCreatorFollowers))
+        setMaxCommunityAge(String(settings.maxCommunityAge))
         setOpenInBrowser(settings.openInBrowser)
         setOpenMode(settings.openMode)
         setTerminal(settings.terminal)
@@ -378,28 +402,48 @@ function MainTab({
         const fees = parseSol(feesFilterValue)
 
         const migCleaned = normalize(migration)
-        let migValue = 3
+        let migValue = 5
         if (!migCleaned) {
-            next.migrationPct = 'Required'
+            next.migrationPct = 'err'
         } else {
             const n = Number(migCleaned)
-            if (!Number.isFinite(n)) {
-                next.migrationPct = 'Invalid number'
-            } else if (n < 3) {
-                next.migrationPct = 'Minimum 3%'
-            } else {
-                migValue = Math.min(100, n)
-            }
+            if (!Number.isFinite(n)) next.migrationPct = 'err'
+            else if (n < 5) next.migrationPct = 'err'
+            else migValue = Math.min(100, n)
         }
 
-        if (!min.ok) next.devMin = min.error
-        else if (min.value < 0.1) next.devMin = 'Minimum 0.1%'
-        if (!max.ok) next.devMax = max.error
-        if (feesFilterEnabled && !fees.ok) next.feesFilterValue = fees.error
+        const athCleaned = normalize(minAthMcap)
+        let athValue = 0
+        if (athCleaned) {
+            const n = Number(athCleaned)
+            if (!Number.isFinite(n) || n < 0) next.minAvgAthMcap = 'err'
+            else athValue = n
+        }
+
+        if (!min.ok) next.devMin = 'err'
+        else if (min.value < 0.1) next.devMin = 'err'
+        if (!max.ok) next.devMax = 'err'
+        if (feesFilterEnabled && !fees.ok) next.feesFilterValue = 'err'
 
         if (min.ok && max.ok && !next.devMin && min.value > max.value) {
-            next.devMin = 'Min > Max'
-            next.devMax = 'Max < Min'
+            next.devMin = 'err'
+            next.devMax = 'err'
+        }
+
+        const comMin  = parsePositiveNum(minCommunityMembers)
+        const comMax  = parsePositiveNum(maxCommunityMembers)
+        const creatMin = parsePositiveNum(minCreatorFollowers)
+
+        const comAge = parsePositiveNum(maxCommunityAge)
+
+        if (!comMin.ok)  next.minCommunityMembers = 'err'
+        if (!comMax.ok)  next.maxCommunityMembers = 'err'
+        if (!creatMin.ok) next.minCreatorFollowers = 'err'
+        if (!comAge.ok) next.maxCommunityAge = 'err'
+
+        if (comMin.ok && comMax.ok && comMin.value > 0 && comMax.value > 0 && comMin.value > comMax.value) {
+            next.minCommunityMembers = 'err'
+            next.maxCommunityMembers = 'err'
         }
 
         setErrors(next)
@@ -407,13 +451,18 @@ function MainTab({
         return {
             ok: Object.keys(next).length === 0,
             values: {
-                devMin:           min.ok ? Math.max(0.1, min.value) : 0.1,
-                devMax:           max.ok ? max.value : 77,
-                migrationPct:     migValue,
+                devMin:              min.ok ? Math.max(0.1, min.value) : 0.1,
+                devMax:              max.ok ? max.value : 77,
+                migrationPct:        migValue,
+                minAvgAthMcap:       athValue,
                 hideMayhem,
                 feesFilterEnabled,
                 feesFilterMode,
-                feesFilterValue:  fees.ok ? fees.value : 1,
+                feesFilterValue:     fees.ok ? fees.value : 1,
+                minCommunityMembers: comMin.ok  ? comMin.value  : 0,
+                maxCommunityMembers: comMax.ok  ? comMax.value  : 0,
+                minCreatorFollowers: creatMin.ok ? creatMin.value : 0,
+                maxCommunityAge:    comAge.ok   ? comAge.value   : 0,
                 openInBrowser,
                 openMode,
                 terminal,
@@ -424,222 +473,275 @@ function MainTab({
         }
     }
 
-    const save = async () => {
-        if (!store || busy) return
+    // Debounced auto-save
+    const autoSave = useDebouncedCallback(async () => {
+        if (!store) return
         const res = validate()
         if (!res.ok) return
-        setBusy(true)
         try {
+            isSaving.current = true
             await patch(res.values)
-            onSaved()
             toast.success('Settings saved')
         } catch {
+            isSaving.current = false
             toast.error('Failed to save settings')
-        } finally {
-            setBusy(false)
         }
-    }
+    }, 500)
+
+    // Trigger auto-save on any state change
+    React.useEffect(() => {
+        if (skipAutoSave.current) {
+            skipAutoSave.current = false
+            return
+        }
+        autoSave()
+    }, [devMin, devMax, migration, minAthMcap, hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
 
     return (
-        <div className='space-y-5'>
-            <div className='space-y-4 px-1'>
-                <SectionLabel>Filters</SectionLabel>
+        <div className='space-y-4'>
+            <div className='px-1'>
+                <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+                    {(['filters', 'app'] as MainView[]).map(v => (
+                        <button
+                            key={v}
+                            type='button'
+                            onClick={() => setView(v)}
+                            className={cn(
+                                'flex-1 rounded-[5px] px-3 py-1.5 text-xs cursor-pointer font-medium transition-colors',
+                                view === v ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
+                            )}
+                        >
+                            {v === 'filters' ? 'Filters' : 'App Settings'}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
-                <div className='space-y-2'>
-                    <Label>Dev Holdings %</Label>
-                    <div className='grid grid-cols-2 gap-3'>
-                        <SuffixInput value={devMin} onChange={setDevMin} suffix='MIN' placeholder='0.1' error={!!errors.devMin} />
-                        <SuffixInput value={devMax} onChange={setDevMax} suffix='MAX' placeholder='77'  error={!!errors.devMax} />
+            {view === 'filters' && (
+                <div className='space-y-4 px-1 py-2'>
+                    {/* ── DEV FILTERS ── */}
+                    <SectionLabel>Dev Filters</SectionLabel>
+
+                    <div className='space-y-2'>
+                        <Label>Dev Holdings %</Label>
+                        <div className='grid grid-cols-2 gap-3'>
+                            <SuffixInput value={devMin} onChange={setDevMin} suffix='MIN' placeholder='0.1' error={!!errors.devMin} />
+                            <SuffixInput value={devMax} onChange={setDevMax} suffix='MAX' placeholder='77'  error={!!errors.devMax} />
+                        </div>
                     </div>
-                    {(errors.devMin || errors.devMax) && (
-                        <p className='text-xs text-rose-300'>{errors.devMin || errors.devMax}</p>
-                    )}
-                </div>
 
-                <div className='space-y-2'>
-                    <Label>Migration rate %</Label>
-                    <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='15' error={!!errors.migrationPct} />
-                    {errors.migrationPct
-                        ? <p className='text-xs text-rose-300'>{errors.migrationPct}</p>
-                        : <p className='text-xs text-muted'>Minimum allowed value is 3%</p>
-                    }
-                </div>
+                    <div className='space-y-2'>
+                        <div className='grid grid-cols-2 gap-3'>
+                            <div className='space-y-1.5'>
+                                <Label>Migration Rate %</Label>
+                                <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='15' error={!!errors.migrationPct} />
+                            </div>
+                            <div className='space-y-1.5'>
+                                <Label>Average ATH MC</Label>
+                                <SuffixInput value={minAthMcap} onChange={setMinAthMcap} suffix='MIN' placeholder='0' error={!!errors.minAvgAthMcap} />
+                            </div>
+                        </div>
+                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-sky-500/8 ring-1 ring-sky-500/20'>
+                            <Info className='h-3.5 w-3.5 text-sky-400 shrink-0' />
+                            <p className='text-[11px] text-sky-200/70'>
+                                Migration min <span className='font-semibold text-white'>5%</span>
+                                {' · '}ATH MC in <span className='font-semibold text-white'>USD</span>
+                                {' · '}<span className='font-semibold text-white'>0</span> = disabled
+                            </p>
+                        </div>
+                    </div>
 
-                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5'>
-                    <RowSwitch
-                        label='Hide Mayhem tokens'
-                        description='Skip pump.fun tokens launched in Mayhem mode'
-                        checked={hideMayhem}
-                        onCheckedChange={setHideMayhem}
-                        disabled={busy}
-                    />
-                </div>
+                    {/* ── TOKEN FILTERS ── */}
+                    <SectionLabel>Token Filters</SectionLabel>
 
-                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
-                    <RowSwitch
-                        label='Fees filter'
-                        description="Filter by dev's fee history on previous tokens"
-                        checked={feesFilterEnabled}
-                        onCheckedChange={setFeesFilterEnabled}
-                        disabled={busy}
-                    />
-                    {feesFilterEnabled && (
-                        <>
-                            <Separator className='opacity-40' />
-                            <div className='space-y-3'>
-                                <div className='space-y-1.5'>
-                                    <Label className='text-xs text-muted'>Calculation mode</Label>
-                                    <FeesFilterModeToggle value={feesFilterMode} onChange={setFeesFilterMode} disabled={busy} />
-                                    <p className='text-xs text-muted'>
-                                        {feesFilterMode === 'total'
-                                            ? 'Sum of fees across all tracked tokens must exceed the threshold'
-                                            : 'Average fee per token must exceed the threshold'
-                                        }
-                                    </p>
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5'>
+                        <RowSwitch
+                            label='Hide Mayhem Tokens'
+                            description='Skip pump.fun tokens launched in Mayhem mode'
+                            checked={hideMayhem}
+                            onCheckedChange={setHideMayhem}
+                        />
+                    </div>
+
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                        <RowSwitch
+                            label='Fees Filter'
+                            description="Filter by dev's fee history on previous tokens"
+                            checked={feesFilterEnabled}
+                            onCheckedChange={setFeesFilterEnabled}
+                        />
+                        {feesFilterEnabled && (
+                            <>
+                                <Separator className='opacity-40' />
+                                <div className='space-y-3'>
+                                    <div className='space-y-1.5'>
+                                        <Label className='text-xs text-muted'>Calculation Mode</Label>
+                                        <FeesFilterModeToggle value={feesFilterMode} onChange={setFeesFilterMode} />
+                                        <p className='text-xs text-muted'>
+                                            {feesFilterMode === 'total'
+                                                ? 'Sum of fees across all tracked tokens must exceed the threshold'
+                                                : 'Average fee per token must exceed the threshold'
+                                            }
+                                        </p>
+                                    </div>
+                                    <div className='space-y-1.5'>
+                                        <Label className='text-xs text-muted'>Threshold</Label>
+                                        <SuffixInput value={feesFilterValue} onChange={setFeesFilterValue} suffix='SOL' placeholder='1' error={!!errors.feesFilterValue} />
+                                    </div>
                                 </div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* ── X/TWITTER COMMUNITY ── */}
+                    <SectionLabel>X/Twitter Community</SectionLabel>
+
+                    <div className='space-y-2'>
+                        <Label>Community Members</Label>
+                        <div className='grid grid-cols-2 gap-3'>
+                            <SuffixInput value={minCommunityMembers} onChange={setMinCommunityMembers} suffix='MIN' placeholder='0' error={!!errors.minCommunityMembers} />
+                            <SuffixInput value={maxCommunityMembers} onChange={setMaxCommunityMembers} suffix='MAX' placeholder='0' error={!!errors.maxCommunityMembers} />
+                        </div>
+                    </div>
+
+                    <div className='space-y-2'>
+                        <div className='grid grid-cols-2 gap-3'>
+                            <div className='space-y-1.5'>
+                                <Label>Creator Followers</Label>
+                                <SuffixInput value={minCreatorFollowers} onChange={setMinCreatorFollowers} suffix='MIN' placeholder='0' error={!!errors.minCreatorFollowers} />
+                            </div>
+                            <div className='space-y-1.5'>
+                                <Label>Max Community Age</Label>
+                                <SuffixInput value={maxCommunityAge} onChange={setMaxCommunityAge} suffix='HR' placeholder='0' error={!!errors.maxCommunityAge} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-violet-500/8 ring-1 ring-violet-500/20'>
+                        <Info className='h-3.5 w-3.5 text-violet-400 shrink-0' />
+                        <p className='text-[11px] text-violet-200/70'>
+                            Only for tokens with <span className='font-semibold text-white'>X Community</span>
+                            {' · '}<span className='font-semibold text-white'>0</span> = disabled
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'app' && (
+                <div className='space-y-4 px-1 py-2'>
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                        <RowSwitch
+                            label='Auto-Open Token'
+                            description='Automatically open new tokens in browser'
+                            checked={openInBrowser}
+                            onCheckedChange={setOpenInBrowser}
+                        />
+                        {openInBrowser && (
+                            <>
+                                <Separator className='opacity-40' />
                                 <div className='space-y-1.5'>
-                                    <Label className='text-xs text-muted'>Threshold</Label>
-                                    <SuffixInput value={feesFilterValue} onChange={setFeesFilterValue} suffix='SOL' placeholder='1' error={!!errors.feesFilterValue} />
-                                    {errors.feesFilterValue && (
-                                        <p className='text-xs text-rose-300'>{errors.feesFilterValue}</p>
+                                    <Label className='text-xs text-muted'>Open Mode</Label>
+                                    <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+                                        {(['new-tab', 'current-tab'] as OpenMode[]).map(mode => (
+                                            <button
+                                                key={mode}
+                                                type='button'
+                                                onClick={() => setOpenMode(mode)}
+                                                className={cn(
+                                                    'flex-1 rounded-[5px] px-3 py-1 text-xs cursor-pointer font-medium transition-colors',
+                                                    openMode === mode ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
+                                                )}
+                                            >
+                                                {mode === 'new-tab' ? 'New Tab' : 'Current Tab'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {openMode === 'current-tab' && (
+                                        <div className='flex items-center gap-2 rounded-md bg-amber-500/8 ring-1 ring-amber-500/15 px-2.5 py-1.5 mt-1'>
+                                            <span className='text-amber-400 text-xs'>✨</span>
+                                            <p className='text-xs text-amber-300 flex-1'>Requires <span className='font-semibold text-white'>Spark Opener</span> Extension</p>
+                                            <button
+                                                type='button'
+                                                onClick={() => void openUrl('https://chromewebstore.google.com/detail/cmdanpdcddmkknljllainkehfdbdjfbc')}
+                                                className='text-xs text-sky-400 hover:text-sky-300 transition-colors shrink-0 cursor-pointer'
+                                            >
+                                                Install Extension
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            <div className='space-y-4 px-1'>
-                <SectionLabel>App Settings</SectionLabel>
-
-                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
-                    <RowSwitch
-                        label='Auto-open token'
-                        description='Automatically open new tokens in browser'
-                        checked={openInBrowser}
-                        onCheckedChange={setOpenInBrowser}
-                        disabled={busy}
-                    />
-                    {openInBrowser && (
-                        <>
-                            <Separator className='opacity-40' />
-                            <div className='space-y-1.5'>
-                                <Label className='text-xs text-muted'>Open mode</Label>
-                                <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
-                                    {(['new-tab', 'current-tab'] as OpenMode[]).map(mode => (
-                                        <button
-                                            key={mode}
-                                            type='button'
-                                            disabled={busy}
-                                            onClick={() => setOpenMode(mode)}
-                                            className={cn(
-                                                'flex-1 rounded-[5px] px-3 py-1 text-xs cursor-pointer font-medium transition-colors',
-                                                openMode === mode ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
-                                                busy && 'opacity-40 cursor-not-allowed',
-                                            )}
-                                        >
-                                            {mode === 'new-tab' ? 'New Tab' : 'Current Tab'}
-                                        </button>
-                                    ))}
+                                <Separator className='opacity-40' />
+                                <div className='space-y-1.5'>
+                                    <Label className='text-xs text-muted'>Terminal</Label>
+                                    <TerminalPicker value={terminal} onChange={setTerminal} />
                                 </div>
-                                {openMode === 'current-tab' && (
-                                    <div className='flex items-center gap-2 rounded-md bg-amber-500/8 ring-1 ring-amber-500/15 px-2.5 py-1.5 mt-1'>
-                                        <span className='text-amber-400 text-xs'>✨</span>
-                                        <p className='text-xs text-amber-300 flex-1'>Requires <span className='font-semibold text-white'>Spark Opener</span> Extension</p>
-                                        <button
-                                            type='button'
-                                            onClick={() => void openUrl('https://chromewebstore.google.com/detail/cmdanpdcddmkknljllainkehfdbdjfbc')}
-                                            className='text-xs text-sky-400 hover:text-sky-300 transition-colors shrink-0 cursor-pointer'
-                                        >
-                                            Install Extension
-                                        </button>
+                            </>
+                        )}
+                    </div>
+
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                        <RowSwitch
+                            label='Sound Notifications'
+                            description='Play a sound when a new token passes filters'
+                            checked={soundEnabled}
+                            onCheckedChange={setSoundEnabled}
+                        />
+                        {soundEnabled && (
+                            <>
+                                <Separator className='opacity-40' />
+                                <div className='space-y-1.5'>
+                                    <div className='flex items-center justify-between'>
+                                        <Label className='text-xs text-muted'>Volume</Label>
+                                        <span className='text-xs font-semibold text-white tabular-nums'>{soundVolume}%</span>
                                     </div>
-                                )}
-                            </div>
-                            <Separator className='opacity-40' />
-                            <div className='space-y-1.5'>
-                                <Label className='text-xs text-muted'>Terminal</Label>
-                                <TerminalPicker value={terminal} onChange={setTerminal} disabled={busy} />
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
-                    <RowSwitch
-                        label='Sound notifications'
-                        description='Play a sound when a new token passes filters'
-                        checked={soundEnabled}
-                        onCheckedChange={setSoundEnabled}
-                        disabled={busy}
-                    />
-                    {soundEnabled && (
-                        <>
-                            <Separator className='opacity-40' />
-                            <div className='space-y-1.5'>
-                                <div className='flex items-center justify-between'>
-                                    <Label className='text-xs text-muted'>Volume</Label>
-                                    <span className='text-xs font-semibold text-white tabular-nums'>{soundVolume}%</span>
+                                    <input
+                                        type='range' min='0' max='100' step='5'
+                                        value={soundVolume}
+                                        onChange={e => setSoundVolume(Number(e.target.value))}
+                                        className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
+                                    />
+                                    <div className='relative flex text-[11px] text-muted tabular-nums h-4'>
+                                        <span className='absolute left-0'>0%</span>
+                                        <span className='absolute left-1/4 -translate-x-1/2'>25%</span>
+                                        <span className='absolute left-1/2 -translate-x-1/2'>50%</span>
+                                        <span className='absolute left-3/4 -translate-x-1/2'>75%</span>
+                                        <span className='absolute right-0'>100%</span>
+                                    </div>
                                 </div>
-                                <input
-                                    type='range' min='0' max='100' step='5'
-                                    value={soundVolume}
-                                    onChange={e => setSoundVolume(Number(e.target.value))}
-                                    disabled={busy}
-                                    className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
-                                />
-                                <div className='relative flex text-[11px] text-muted tabular-nums h-4'>
-                                    <span className='absolute left-0'>0%</span>
-                                    <span className='absolute left-1/4 -translate-x-1/2'>25%</span>
-                                    <span className='absolute left-1/2 -translate-x-1/2'>50%</span>
-                                    <span className='absolute left-3/4 -translate-x-1/2'>75%</span>
-                                    <span className='absolute right-0'>100%</span>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
+                            </>
+                        )}
+                    </div>
 
-                <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-3 space-y-3'>
-                    <div className='flex items-center justify-between'>
-                        <div>
-                            <div className='text-sm font-medium text-white'>UI Scale</div>
-                            <div className='text-xs text-muted mt-0.5'>Adjust interface size</div>
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-3 space-y-3'>
+                        <div className='flex items-center justify-between'>
+                            <div>
+                                <div className='text-sm font-medium text-white'>UI Scale</div>
+                                <div className='text-xs text-muted mt-0.5'>Adjust interface size</div>
+                            </div>
+                            <span className='text-sm font-semibold text-white tabular-nums'>{uiScale}%</span>
                         </div>
-                        <span className='text-sm font-semibold text-white tabular-nums'>{uiScale}%</span>
-                    </div>
-                    <input
-                        type='range' min='75' max='150' step='5'
-                        value={uiScale}
-                        onChange={e => setUIScale(Number(e.target.value))}
-                        disabled={busy}
-                        className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
-                    />
-                    <div className='relative flex text-[11px] text-muted tabular-nums h-4'>
-                        <span className='absolute left-0'>75%</span>
-                        <span className='absolute left-1/3 -translate-x-1/2'>100%</span>
-                        <span className='absolute left-2/3 -translate-x-1/2'>125%</span>
-                        <span className='absolute right-0'>150%</span>
+                        <input
+                            type='range' min='75' max='150' step='5'
+                            value={uiScale}
+                            onChange={e => setUIScale(Number(e.target.value))}
+                            className='w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer'
+                        />
+                        <div className='relative flex text-[11px] text-muted tabular-nums h-4'>
+                            <span className='absolute left-0'>75%</span>
+                            <span className='absolute left-1/3 -translate-x-1/2'>100%</span>
+                            <span className='absolute left-2/3 -translate-x-1/2'>125%</span>
+                            <span className='absolute right-0'>150%</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <div className='flex justify-end pt-1'>
-                <Button variant='default' onClick={save} disabled={busy}>
-                    {busy
-                        ? <span className='inline-flex items-center gap-2'><Spinner className='h-4 w-4' />Saving…</span>
-                        : 'Save'
-                    }
-                </Button>
-            </div>
+            )}
         </div>
     )
 }
 
-// --- access tab ---
+// --- access card (embedded in referral tab) ---
 
-function AccessTab() {
+function AccessCard() {
     const { status, licenseKey, expiresAt, errorMessage } = useAuth()
 
     const timeLeft = React.useMemo(() => {
@@ -677,7 +779,7 @@ function AccessTab() {
         progressPct > 10 ? 'bg-amber-400'   : 'bg-rose-500'
 
     return (
-        <div className='space-y-4 p-1'>
+        <>
             <div className='rounded-lg bg-white/3 ring-1 ring-white/8 p-3.5 space-y-3'>
                 <div className='flex items-center justify-between'>
                     <div className='flex items-center gap-2'>
@@ -726,9 +828,9 @@ function AccessTab() {
                 )}
             >
                 <Zap className='h-4 w-4 text-amber-400' />
-                Renew access
+                Renew Access
             </a>
-        </div>
+        </>
     )
 }
 
@@ -912,8 +1014,11 @@ function ReferralTab() {
 
     if (loadingStats) {
         return (
-            <div className='flex items-center justify-center py-10'>
-                <Spinner className='h-5 w-5 text-zinc-500' />
+            <div className='space-y-4 p-1'>
+                <AccessCard />
+                <div className='flex items-center justify-center py-10'>
+                    <Spinner className='h-5 w-5 text-zinc-500' />
+                </div>
             </div>
         )
     }
@@ -922,6 +1027,7 @@ function ReferralTab() {
     if (!stats) {
         return (
             <div className='space-y-4 p-1'>
+                <AccessCard />
                 <SectionLabel>My Referral Code</SectionLabel>
 
                 <WalletWarning />
@@ -970,6 +1076,7 @@ function ReferralTab() {
     // code card
     return (
         <div className='space-y-4 p-1'>
+            <AccessCard />
             <SectionLabel>My Referral Code</SectionLabel>
 
             {/* info card */}
@@ -1126,36 +1233,91 @@ function ReferralTab() {
 
 // --- labels tab ---
 
-function LabelsTab() {
-    const { walletLabels, removeWalletLabel } = useSettings()
-    const entries = Object.entries(walletLabels)
+type LabelsView = 'wallets' | 'creators'
 
-    if (entries.length === 0) {
-        return (
-            <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
-                <Tag className='h-8 w-8 opacity-30' />
-                <span className='text-sm'>No labels yet</span>
-                <span className='text-xs opacity-60'>Label a dev wallet from any token card</span>
-            </div>
-        )
-    }
+function LabelsTab() {
+    const { walletLabels, removeWalletLabel, creatorLabels, removeCreatorLabel } = useSettings()
+    const [view, setView] = React.useState<LabelsView>('wallets')
+
+    const walletEntries  = Object.entries(walletLabels)
+    const creatorEntries = Object.entries(creatorLabels)
 
     return (
-        <div className='space-y-1.5 p-1'>
-            {entries.map(([addr, label]) => (
-                <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                    <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
-                    <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
+        <div className='space-y-4'>
+            {/* toggle */}
+            <div className='px-1'>
+            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+                {(['wallets', 'creators'] as LabelsView[]).map(v => (
                     <button
+                        key={v}
                         type='button'
-                        title='Remove label'
-                        onClick={() => { void removeWalletLabel(addr); toast.success('Label removed') }}
-                        className='shrink-0 text-muted hover:text-rose-400 transition-colors'
+                        onClick={() => setView(v)}
+                        className={cn(
+                            'flex-1 rounded-[5px] px-3 py-1.5 text-xs cursor-pointer font-medium transition-colors',
+                            view === v ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
+                        )}
                     >
-                        <X className='h-3.5 w-3.5' />
+                        {v === 'wallets' ? 'Wallet Labels' : 'Creator Labels'}
                     </button>
-                </div>
-            ))}
+                ))}
+            </div>
+            </div>
+
+            {/* wallet labels */}
+            {view === 'wallets' && (
+                walletEntries.length === 0 ? (
+                    <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                        <Tag className='h-8 w-8 opacity-30' />
+                        <span className='text-sm'>No Wallet Labels Yet</span>
+                        <span className='text-xs opacity-60'>Label a dev wallet from any token card</span>
+                    </div>
+                ) : (
+                    <div className='space-y-1.5 p-1'>
+                        {walletEntries.map(([addr, label]) => (
+                            <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+                                <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
+                                <button
+                                    type='button'
+                                    title='Remove Label'
+                                    onClick={() => { void removeWalletLabel(addr); toast.success('Label removed') }}
+                                    className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                >
+                                    <X className='h-3.5 w-3.5' />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )
+            )}
+
+            {/* creator labels */}
+            {view === 'creators' && (
+                creatorEntries.length === 0 ? (
+                    <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                        <Users className='h-8 w-8 opacity-30' />
+                        <span className='text-sm'>No Creator Labels Yet</span>
+                        <span className='text-xs opacity-60'>Label a community creator from the hover card</span>
+                    </div>
+                ) : (
+                    <div className='space-y-1.5 p-1'>
+                        {creatorEntries.map(([creatorId, label]) => (
+                            <div key={creatorId} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                <span className='text-violet-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+                                <span className='text-muted font-mono text-xs truncate flex-1'>{creatorId}</span>
+                                <button
+                                    type='button'
+                                    title='Remove Label'
+                                    onClick={() => { void removeCreatorLabel(creatorId); toast.success('Creator label removed') }}
+                                    className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                >
+                                    <X className='h-3.5 w-3.5' />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )
+            )}
         </div>
     )
 }
@@ -1207,7 +1369,6 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
     const { settings, store, ready } = useSettings()
 
     const [open, setOpen] = React.useState(false)
-    const [busy, setBusy] = React.useState(false)
     const [tab,  setTab]  = React.useState<Tab>('main')
 
     const contentRef = React.useRef<HTMLDivElement | null>(null)
@@ -1225,7 +1386,7 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
             <DialogContent
                 tabIndex={-1}
                 ref={contentRef}
-                className='sm:max-w-115 flex flex-col max-h-[85vh]'
+                className='sm:max-w-115 flex flex-col max-h-[85vh] gap-2'
                 onOpenAutoFocus={e => {
                     e.preventDefault()
                     requestAnimationFrame(() => contentRef.current?.focus())
@@ -1242,15 +1403,8 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
 
                 <div className='flex-1 overflow-y-auto min-h-0'>
                     {tab === 'main' && (
-                        <MainTab
-                            settings={settings}
-                            store={store}
-                            busy={busy}
-                            setBusy={setBusy}
-                            onSaved={() => setOpen(false)}
-                        />
+                        <MainTab settings={settings} store={store} />
                     )}
-                    {tab === 'access'    && <AccessTab />}
                     {tab === 'referral'  && <ReferralTab />}
                     {tab === 'labels'    && <LabelsTab />}
                     {tab === 'blacklist' && <BlacklistTab />}

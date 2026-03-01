@@ -1,17 +1,47 @@
-import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke } from '@tauri-apps/api/core'
 
 import { terminalUrl } from '@/lib/refferal'
-import { WS_URL, BACKEND_URL } from '@/config/env'
+import { WS_URL } from '@/config/env'
 import { useSettings } from '@/context/SettingsContext'
 import { useNotificationSound } from '@/hooks/useNotificationSound'
 
 // --- types ---
 
 type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
-type PriceStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+export type XCommunityCreator = {
+    id: string
+    name: string | null
+    screen_name: string | null
+    avatar: string | null
+    following_count: number
+    followers_count: number
+    is_blue_verified: boolean
+    joined_at: number
+}
+
+export type XCommunity = {
+    id: string
+    name: string
+    access: string | null
+    banner: string | null
+    member_count: number
+    description: string | null
+    created_at: number
+    creator: XCommunityCreator | null
+}
+
+export type Metadata = {
+    image: string | null
+    xlink: string | null
+    website: string | null
+    telegram: string | null
+    xcommunity: XCommunity | null
+    has_socials: boolean
+    xtype: [string, ...string[]] | null
+}
 
 export type TokenEvent = {
     pair: string
@@ -21,7 +51,7 @@ export type TokenEvent = {
     devhold: number
     protocol: 'pump' | 'bonk' | string
     market_cap: number
-    metadata_url: string | null
+    metadata: Metadata | null
     is_mayhem_mode: boolean
 }
 
@@ -29,6 +59,7 @@ export type DevTokenStats = {
     total: number
     migrated: number
     rate: number
+    avg_ath_mcap: number
 }
 
 export type DevInfo = {
@@ -37,38 +68,24 @@ export type DevInfo = {
 }
 
 export type LastToken = {
-    pair: string
-    address: string
-    name: string
-    image: string
     ticker: string
-    supply: number
-    created_at: number
-    price: number
-    market_cap: number
+    image: string
+    address: string
+    pair: string | null
     is_migrated: boolean
-    total_fees: number | null
-    is_dex_paid: boolean | null
-    dex_paid_at: number | null
-    peak_mcap: number | null
-    ath_price: number | null
-    ath_time: number | null
+    created_at: number
+    dex_paid: boolean
+    total_fee: number
+    volume_1h: number
+    market_cap: number
+    ath_mcap: number
 }
 
 export type WsTokenMessage = {
     newpair: TokenEvent
     dev: DevInfo
     last_tokens: LastToken[]
-}
-
-export type Metadata = {
-    name?: string | null
-    ticker?: string | null
-    image_url?: string | null
-    telegram?: string | null
-    website?: string | null
-    twitter?: string | null
-    has_socials?: boolean
+    sol_price: number | null
 }
 
 export type TokenCardModel = {
@@ -76,8 +93,6 @@ export type TokenCardModel = {
     token: TokenEvent
     dev: DevInfo
     lastTokens: LastToken[]
-    metadata: Metadata | null
-    metaStatus: 'idle' | 'loading' | 'ready' | 'error'
 }
 
 type WsMessage = Record<string, unknown>
@@ -86,26 +101,23 @@ type WsMessage = Record<string, unknown>
 
 const MAX_TOKENS = 10
 
-const META_PATH = '/hub/sol/meta'
-const META_TIMEOUT_MS = 1500
-
-const META_RETRY_ATTEMPTS = 5
-const META_RETRY_DELAY_MS = 1500
-
-const PRICE_PATH = '/hub/sol/price'
-const PRICE_POLL_MS = 30_000
-
 const WS_RECONNECT_BASE_MS = 500
 const WS_RECONNECT_MAX_MS = 10_000
 const WS_RECONNECT_JITTER_MS = 250
 
-// --- http client ---
+// --- binary decode ---
 
-const http = axios.create({
-    baseURL: BACKEND_URL,
-    timeout: META_TIMEOUT_MS,
-    headers: { Accept: 'application/json' },
-})
+const decoder = new TextDecoder()
+
+function decodeBinary(data: unknown): unknown {
+    if (data instanceof ArrayBuffer) {
+        return JSON.parse(decoder.decode(data))
+    }
+    if (typeof data === 'string') {
+        return JSON.parse(data)
+    }
+    return null
+}
 
 // --- ws message validation ---
 
@@ -122,8 +134,7 @@ function isWsTokenMessage(x: unknown): x is WsTokenMessage {
         typeof p.ticker !== 'string' ||
         typeof p.address !== 'string' ||
         typeof p.devhold !== 'number' ||
-        typeof p.protocol !== 'string' ||
-        (typeof p.metadata_url !== 'string' && p.metadata_url !== null)
+        typeof p.protocol !== 'string'
     ) return false
 
     const dev = v.dev
@@ -147,54 +158,82 @@ function isWsTokenMessage(x: unknown): x is WsTokenMessage {
 
 // --- normalizers ---
 
+function normalizeMetadata(raw: unknown): Metadata | null {
+    if (!raw || typeof raw !== 'object') return null
+    const r = raw as Record<string, unknown>
+
+    // empty metadata object from server
+    if (Object.keys(r).length === 0) return null
+
+    const xlink = typeof r.xlink === 'string' && r.xlink !== 'None' ? r.xlink : null
+    const website = typeof r.website === 'string' && r.website !== 'None' ? r.website : null
+    const telegram = typeof r.telegram === 'string' && r.telegram !== 'None' ? r.telegram : null
+
+    let xcommunity: XCommunity | null = null
+    if (r.xcommunity && typeof r.xcommunity === 'object' && r.xcommunity !== null && typeof (r.xcommunity as Record<string, unknown>).id === 'string') {
+        const c = r.xcommunity as Record<string, unknown>
+        let creator: XCommunityCreator | null = null
+        if (c.creator && typeof c.creator === 'object') {
+            const cr = c.creator as Record<string, unknown>
+            creator = {
+                id: String(cr.id ?? ''),
+                name: typeof cr.name === 'string' ? cr.name : null,
+                screen_name: typeof cr.screen_name === 'string' ? cr.screen_name : null,
+                avatar: typeof cr.avatar === 'string' ? cr.avatar : null,
+                following_count: typeof cr.following_count === 'number' ? cr.following_count : 0,
+                followers_count: typeof cr.followers_count === 'number' ? cr.followers_count : 0,
+                is_blue_verified: cr.is_blue_verified === true,
+                joined_at: typeof cr.joined_at === 'number' ? cr.joined_at : 0,
+            }
+        }
+        xcommunity = {
+            id: String(c.id),
+            name: typeof c.name === 'string' ? c.name : '',
+            access: typeof c.access === 'string' ? c.access : null,
+            banner: typeof c.banner === 'string' ? c.banner : null,
+            member_count: typeof c.member_count === 'number' ? c.member_count : 0,
+            description: typeof c.description === 'string' ? c.description : null,
+            created_at: typeof c.created_at === 'number' ? c.created_at : 0,
+            creator,
+        }
+    }
+
+    let xtype: Metadata['xtype'] = null
+    if (Array.isArray(r.xtype) && r.xtype.length > 0 && typeof r.xtype[0] === 'string') {
+        xtype = r.xtype as [string, ...string[]]
+    }
+
+    return {
+        image: typeof r.image === 'string' ? r.image : null,
+        xlink,
+        website,
+        telegram,
+        xcommunity,
+        has_socials: Boolean(xlink || telegram || website),
+        xtype,
+    }
+}
+
 function normalizeLastTokens(raw: unknown[]): LastToken[] {
     return raw
         .filter(item => item && typeof item === 'object')
         .map(item => {
             const r = item as Record<string, unknown>
             return {
-                pair:        typeof r.pair === 'string'         ? r.pair        : '',
-                address:     typeof r.address === 'string'      ? r.address     : '',
-                name:        typeof r.name === 'string'         ? r.name        : '',
-                image:       typeof r.image === 'string'        ? r.image       : '',
                 ticker:      typeof r.ticker === 'string'       ? r.ticker      : '',
-                supply:      typeof r.supply === 'number'       ? r.supply      : 0,
-                created_at:  typeof r.created_at === 'number'   ? r.created_at  : 0,
-                price:       typeof r.price === 'number'        ? r.price       : 0,
-                market_cap:  typeof r.market_cap === 'number'   ? r.market_cap  : 0,
+                image:       typeof r.image === 'string'        ? r.image       : '',
+                address:     typeof r.address === 'string'      ? r.address     : '',
+                pair:        typeof r.pair === 'string'         ? r.pair        : null,
                 is_migrated: typeof r.is_migrated === 'boolean' ? r.is_migrated : false,
-                total_fees:  typeof r.total_fees === 'number'   ? r.total_fees  : null,
-                is_dex_paid: typeof r.is_dex_paid === 'boolean' ? r.is_dex_paid : null,
-                dex_paid_at: typeof r.dex_paid_at === 'number'  ? r.dex_paid_at : null,
-                peak_mcap:   typeof r.peak_mcap === 'number'    ? r.peak_mcap   : null,
-                ath_price:   typeof r.ath_price === 'number'    ? r.ath_price   : null,
-                ath_time:    typeof r.ath_time === 'number'     ? r.ath_time    : null,
+                created_at:  typeof r.created_at === 'number'   ? r.created_at  : 0,
+                dex_paid:    typeof r.dex_paid === 'boolean'    ? r.dex_paid    : false,
+                total_fee:   typeof r.total_fee === 'number'    ? r.total_fee   : 0,
+                volume_1h:   typeof r.volume_1h === 'number'    ? r.volume_1h   : 0,
+                market_cap:  typeof r.market_cap === 'number'   ? r.market_cap  : 0,
+                ath_mcap:    typeof r.ath_mcap === 'number'     ? r.ath_mcap    : 0,
             }
         })
         .slice(0, 3)
-}
-
-function normalizeMetadata(raw: any): Metadata | null {
-    if (!raw || typeof raw !== 'object') return null
-
-    const m: Metadata = {
-        name: typeof raw.name === 'string' ? raw.name : null,
-        ticker:
-            typeof raw.symbol === 'string' ? raw.symbol :
-            typeof raw.ticker === 'string' ? raw.ticker : null,
-        image_url:
-            typeof raw.image === 'string'     ? raw.image :
-            typeof raw.image_url === 'string' ? raw.image_url : null,
-        telegram: typeof raw.telegram === 'string' ? raw.telegram : null,
-        website:
-            typeof raw.website === 'string'      ? raw.website :
-            typeof raw.external_url === 'string' ? raw.external_url : null,
-        twitter: typeof raw.twitter === 'string' ? raw.twitter : null,
-    }
-
-    m.has_socials = Boolean(m.twitter || m.telegram || m.website)
-
-    return m
 }
 
 // --- fees filter ---
@@ -205,27 +244,16 @@ function passesFeeFilter(
     mode: 'total' | 'average',
     threshold: number,
 ): boolean {
-    if (!enabled) {
-        return true
-    }
+    if (!enabled) return true
 
-    const withFees = lastTokens.filter(
-        t => t.total_fees !== null
-    ) as (LastToken & { total_fees: number })[]
+    const withFees = lastTokens.filter(t => t.total_fee > 0)
+    if (withFees.length === 0) return false
 
-    // no fee data — block the token
-    if (withFees.length === 0) {
-        return false
-    }
+    const sum = withFees.reduce((acc, t) => acc + t.total_fee, 0)
 
-    const sum = withFees.reduce((acc, t) => acc + t.total_fees, 0)
+    if (mode === 'total') return sum >= threshold
 
-    if (mode === 'total') {
-        return sum >= threshold
-    }
-
-    const avg = sum / withFees.length
-    return avg >= threshold
+    return (sum / withFees.length) >= threshold
 }
 
 // --- hook ---
@@ -244,10 +272,15 @@ export function useSparkTokens() {
         devMin: settings.devMin,
         devMax: settings.devMax,
         migrationPct: settings.migrationPct,
+        minAvgAthMcap: settings.minAvgAthMcap,
         hideMayhem: settings.hideMayhem,
         feesFilterEnabled: settings.feesFilterEnabled,
         feesFilterMode: settings.feesFilterMode,
         feesFilterValue: settings.feesFilterValue,
+        minCommunityMembers: settings.minCommunityMembers,
+        maxCommunityMembers: settings.maxCommunityMembers,
+        minCreatorFollowers: settings.minCreatorFollowers,
+        maxCommunityAge: settings.maxCommunityAge,
     })
     const isBlacklistedRef = useRef(isBlacklisted)
 
@@ -261,19 +294,29 @@ export function useSparkTokens() {
             devMin: settings.devMin,
             devMax: settings.devMax,
             migrationPct: settings.migrationPct,
+            minAvgAthMcap: settings.minAvgAthMcap,
             hideMayhem: settings.hideMayhem,
             feesFilterEnabled: settings.feesFilterEnabled,
             feesFilterMode: settings.feesFilterMode,
             feesFilterValue: settings.feesFilterValue,
+            minCommunityMembers: settings.minCommunityMembers,
+            maxCommunityMembers: settings.maxCommunityMembers,
+            minCreatorFollowers: settings.minCreatorFollowers,
+            maxCommunityAge: settings.maxCommunityAge,
         }
     }, [
         settings.devMin,
         settings.devMax,
         settings.migrationPct,
+        settings.minAvgAthMcap,
         settings.hideMayhem,
         settings.feesFilterEnabled,
         settings.feesFilterMode,
         settings.feesFilterValue,
+        settings.minCommunityMembers,
+        settings.maxCommunityMembers,
+        settings.minCreatorFollowers,
+        settings.maxCommunityAge,
     ])
 
     // notify server when filter thresholds change
@@ -283,22 +326,19 @@ export function useSparkTokens() {
             ws.send(JSON.stringify({
                 type: 'config',
                 migration_pct: settings.migrationPct,
-                dev_hold_min: settings.devMin,
-                dev_hold_max: settings.devMax,
+                min_dev_hold: settings.devMin,
+                max_dev_hold: settings.devMax,
+                min_avg_ath_mcap: settings.minAvgAthMcap,
             }))
         }
-    }, [settings.migrationPct, settings.devMin, settings.devMax])
+    }, [settings.migrationPct, settings.devMin, settings.devMax, settings.minAvgAthMcap])
 
     // --- internal refs ---
 
     const wsRef = useRef<WebSocket | null>(null)
     const reconnectRef = useRef<number | null>(null)
     const lastPingRecvRef = useRef<number | null>(null)
-    const metaInflightRef = useRef<Map<string, AbortController>>(new Map())
-    const metaRetryTimersRef = useRef<Map<string, number>>(new Map())
     const totalProcessedRef = useRef<number>(0)
-    const priceTimerRef = useRef<number | null>(null)
-    const priceAbortRef = useRef<AbortController | null>(null)
 
     // --- state ---
 
@@ -307,155 +347,6 @@ export function useSparkTokens() {
     const [tokens, setTokens] = useState<TokenCardModel[]>([])
     const [totalProcessed, setTotalProcessed] = useState<number>(0)
     const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null)
-    const [solPriceStatus, setSolPriceStatus] = useState<PriceStatus>('idle')
-
-    // --- metadata fetching ---
-
-    const cancelMeta = (tokenId: string) => {
-        metaInflightRef.current.get(tokenId)?.abort()
-        metaInflightRef.current.delete(tokenId)
-
-        const timer = metaRetryTimersRef.current.get(tokenId)
-        if (timer !== undefined) {
-            window.clearTimeout(timer)
-            metaRetryTimersRef.current.delete(tokenId)
-        }
-    }
-
-    const stopAllMeta = () => {
-        for (const id of [...metaInflightRef.current.keys()]) {
-            cancelMeta(id)
-        }
-    }
-
-    const setMetaError = (tokenId: string) => {
-        setTokens(prev =>
-            prev.map(x =>
-                x.id === tokenId
-                    ? { ...x, metadata: null, metaStatus: 'error' }
-                    : x
-            )
-        )
-    }
-
-    const attemptMeta = (tokenId: string, metadataUrl: string, attemptsLeft: number) => {
-        const prevTimer = metaRetryTimersRef.current.get(tokenId)
-        if (prevTimer !== undefined) {
-            window.clearTimeout(prevTimer)
-            metaRetryTimersRef.current.delete(tokenId)
-        }
-
-        metaInflightRef.current.get(tokenId)?.abort()
-
-        const ctrl = new AbortController()
-        metaInflightRef.current.set(tokenId, ctrl)
-
-        const scheduleRetry = () => {
-            if (attemptsLeft <= 0) {
-                setMetaError(tokenId)
-                metaInflightRef.current.delete(tokenId)
-                return
-            }
-            const timer = window.setTimeout(() => {
-                metaRetryTimersRef.current.delete(tokenId)
-                attemptMeta(tokenId, metadataUrl, attemptsLeft - 1)
-            }, META_RETRY_DELAY_MS)
-            metaRetryTimersRef.current.set(tokenId, timer)
-        }
-
-        http
-            .get(META_PATH, { signal: ctrl.signal, params: { url: metadataUrl } })
-            .then(res => {
-                if (ctrl.signal.aborted) return
-
-                const data = res.data
-
-                if (data && typeof data === 'object' && data.ok === false) {
-                    scheduleRetry()
-                    return
-                }
-
-                const meta = normalizeMetadata(data)
-                setTokens(prev =>
-                    prev.map(x =>
-                        x.id === tokenId
-                            ? { ...x, metadata: meta, metaStatus: meta ? 'ready' : 'error' }
-                            : x
-                    )
-                )
-                metaInflightRef.current.delete(tokenId)
-            })
-            .catch((err: any) => {
-                if (
-                    err?.name === 'CanceledError' ||
-                    err?.code === 'ERR_CANCELED' ||
-                    ctrl.signal.aborted
-                ) return
-
-                const isRetryable =
-                    err?.code === 'ECONNABORTED' ||
-                    err?.code === 'ERR_NETWORK' ||
-                    err?.message === 'Network Error'
-
-                if (isRetryable) {
-                    scheduleRetry()
-                    return
-                }
-
-                setMetaError(tokenId)
-                metaInflightRef.current.delete(tokenId)
-            })
-    }
-
-    const fetchMetadata = (tokenId: string, metadataUrl: string) => {
-        attemptMeta(tokenId, metadataUrl, META_RETRY_ATTEMPTS)
-    }
-
-    // --- sol price polling ---
-
-    const stopPricePolling = () => {
-        if (priceTimerRef.current !== null) {
-            window.clearInterval(priceTimerRef.current)
-            priceTimerRef.current = null
-        }
-        priceAbortRef.current?.abort()
-        priceAbortRef.current = null
-    }
-
-    const fetchSolPrice = async (silent = false) => {
-        priceAbortRef.current?.abort()
-
-        const ctrl = new AbortController()
-        priceAbortRef.current = ctrl
-
-        if (!silent) setSolPriceStatus('loading')
-
-        try {
-            const res = await http.get(PRICE_PATH, { signal: ctrl.signal })
-            const data = res.data as { ok?: boolean; price?: number }
-
-            if (!data || data.ok !== true || typeof data.price !== 'number') {
-                setSolPriceStatus('error')
-                return
-            }
-
-            setSolPriceUsd(data.price)
-            setSolPriceStatus('ready')
-        } catch {
-            setSolPriceStatus('error')
-        } finally {
-            if (priceAbortRef.current === ctrl) priceAbortRef.current = null
-        }
-    }
-
-    const startPricePolling = () => {
-        stopPricePolling()
-        void fetchSolPrice(false)
-        priceTimerRef.current = window.setInterval(
-            () => void fetchSolPrice(true),
-            PRICE_POLL_MS,
-        )
-    }
 
     // --- websocket ---
 
@@ -469,26 +360,26 @@ export function useSparkTokens() {
     const connect = (attempt = 0) => {
         clearReconnect()
 
-        // Close previous WebSocket without triggering onclose reconnect
         if (wsRef.current) {
             wsRef.current.onclose = null
             wsRef.current.close()
         }
 
-        stopAllMeta()
         setStatus('connecting')
 
         const ws = new WebSocket(WS_URL)
+        ws.binaryType = 'arraybuffer'
         wsRef.current = ws
 
         ws.onopen = () => {
             setStatus('open')
-            const { migrationPct, devMin, devMax } = filtersRef.current
+            const { migrationPct, devMin, devMax, minAvgAthMcap } = filtersRef.current
             ws.send(JSON.stringify({
                 type: 'config',
                 migration_pct: migrationPct,
-                dev_hold_min: devMin,
-                dev_hold_max: devMax,
+                min_dev_hold: devMin,
+                max_dev_hold: devMax,
+                min_avg_ath_mcap: minAvgAthMcap,
             }))
         }
         ws.onerror = () => setStatus('error')
@@ -505,10 +396,8 @@ export function useSparkTokens() {
         }
 
         ws.onmessage = evt => {
-            if (typeof evt.data !== 'string') return
-
             let parsed: unknown
-            try { parsed = JSON.parse(evt.data) } catch { return }
+            try { parsed = decodeBinary(evt.data) } catch { return }
             if (typeof parsed !== 'object' || parsed === null) return
 
             const msg = parsed as WsMessage
@@ -527,43 +416,56 @@ export function useSparkTokens() {
 
             if (!isWsTokenMessage(parsed)) return
 
-            const { newpair, dev, last_tokens } = parsed
+            const { newpair, dev, last_tokens, sol_price } = parsed
+
+            // update SOL price from event
+            if (typeof sol_price === 'number' && sol_price > 0) {
+                setSolPriceUsd(sol_price)
+            }
+
             const {
                 devMin,
                 devMax,
                 migrationPct,
+                minAvgAthMcap,
                 hideMayhem,
                 feesFilterEnabled,
                 feesFilterMode,
                 feesFilterValue,
+                minCommunityMembers,
+                maxCommunityMembers,
+                minCreatorFollowers,
+                maxCommunityAge,
             } = filtersRef.current
 
             // --- filters ---
 
-            if (newpair.devhold < devMin) {
-                return
-            }
+            if (newpair.devhold < devMin) return
+            if (newpair.devhold > devMax) return
+            if (dev.tokens.rate < migrationPct) return
+            if (dev.tokens.avg_ath_mcap < minAvgAthMcap) return
+            if (isBlacklistedRef.current(dev.address)) return
+            if (hideMayhem && newpair.is_mayhem_mode) return
 
-            if (newpair.devhold > devMax) {
-                return
-            }
-
-            if (dev.tokens.rate < migrationPct) {
-                return
-            }
-
-            if (isBlacklistedRef.current(dev.address)) {
-                return
-            }
-
-            if (hideMayhem && newpair.is_mayhem_mode) {
-                return
-            }
-
+            // normalize metadata from server payload
+            const metadata = normalizeMetadata((newpair as unknown as Record<string, unknown>).metadata)
             const lastTokens = normalizeLastTokens(last_tokens)
 
             if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue)) {
                 return
+            }
+
+            // community / creator filters (only apply when community is attached)
+            if (metadata?.xcommunity) {
+                if (minCommunityMembers > 0 && metadata.xcommunity.member_count < minCommunityMembers) return
+                if (maxCommunityMembers > 0 && metadata.xcommunity.member_count > maxCommunityMembers) return
+                if (minCreatorFollowers > 0 && metadata.xcommunity.creator) {
+                    if (metadata.xcommunity.creator.followers_count < minCreatorFollowers) return
+                }
+                if (maxCommunityAge > 0 && metadata.xcommunity.created_at > 0) {
+                    const ageMs = Date.now() - metadata.xcommunity.created_at
+                    if (ageMs > maxCommunityAge * 3_600_000) return
+                }
             }
 
             // --- passed all filters ---
@@ -585,23 +487,28 @@ export function useSparkTokens() {
                 }
             }
 
+            const tokenEvent: TokenEvent = {
+                pair: newpair.pair,
+                name: newpair.name,
+                ticker: newpair.ticker,
+                address: newpair.address,
+                devhold: newpair.devhold,
+                protocol: newpair.protocol,
+                market_cap: newpair.market_cap,
+                is_mayhem_mode: newpair.is_mayhem_mode,
+                metadata,
+            }
+
             setTokens(prev => {
                 const rest = prev.filter(x => x.id !== id)
                 const item: TokenCardModel = {
                     id,
-                    token: newpair,
+                    token: tokenEvent,
                     dev,
                     lastTokens,
-                    metadata: null,
-                    metaStatus: newpair.metadata_url?.length ? 'loading' : 'error',
                 }
                 return [item, ...rest].slice(0, MAX_TOKENS)
             })
-
-            if (newpair.metadata_url) {
-                cancelMeta(id)
-                fetchMetadata(id, newpair.metadata_url)
-            }
         }
     }
 
@@ -609,14 +516,11 @@ export function useSparkTokens() {
 
     useEffect(() => {
         connect(0)
-        startPricePolling()
 
         return () => {
             clearReconnect()
-            stopAllMeta()
-            stopPricePolling()
             if (wsRef.current) {
-                wsRef.current.onclose = null  // prevent zombie reconnect timer
+                wsRef.current.onclose = null
                 wsRef.current.close()
                 wsRef.current = null
             }
@@ -630,7 +534,6 @@ export function useSparkTokens() {
         tokens,
         totalProcessed,
         solPriceUsd,
-        solPriceStatus,
         clearTokens: () => setTokens([]),
     }
 }

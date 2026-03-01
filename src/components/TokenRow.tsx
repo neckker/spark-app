@@ -2,8 +2,13 @@ import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
 
-import { AXIOM_URL } from '@/lib/refferal'
+import { terminalLink } from '@/lib/refferal'
 import { Separator } from '@/components/ui/separator'
+import {
+    HoverCard,
+    HoverCardContent,
+    HoverCardTrigger,
+} from '@/components/ui/hover-card'
 import {
     Dialog, DialogContent, DialogHeader,
     DialogTitle, DialogDescription
@@ -16,17 +21,23 @@ import pumpIcon   from '@/assets/pump.svg'
 
 import mayhemIcon from '@/assets/mayhem.svg'
 import axiomIcon  from '@/assets/terminals/axiom.svg'
+import padreIcon  from '@/assets/terminals/padre.svg'
+import gmgnIcon   from '@/assets/terminals/gmgn.svg'
+
+import type { Terminal } from '@/context/SettingsContext'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
-    CheckCircle2, CircleDashed, Search,
-    Globe, Send, TriangleAlert, Twitter,
+    Search,
+    Globe, Send,
     ChefHat, Coins, GitMerge, Percent,
     BadgeDollarSign, ChartNoAxesCombined, HandCoins,
-    Tag, Ban, Clock, Crown, Zap
+    Tag, Ban, Clock, Crown, Zap,
+    Feather, User, Users,
+    Pencil, BadgeCheck,
 } from 'lucide-react'
 
-import type { TokenCardModel, LastToken } from '@/hooks/useSparkTokens'
+import type { TokenCardModel, LastToken, Metadata, XCommunity } from '@/hooks/useSparkTokens'
 import { useSettings } from '@/context/SettingsContext'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -36,14 +47,14 @@ function safeUrl(u: string) {
 }
 
 function fmtUsdCap(usd: number): string {
-    if (!Number.isFinite(usd) || usd <= 0) return '—'
+    if (!Number.isFinite(usd) || usd <= 0) return '0.0'
     if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`
     if (usd >= 1_000)     return `$${(usd / 1_000).toFixed(1)}k`
     return `$${usd.toFixed(0)}`
 }
 
-function fmtSol(sol: number | null): string {
-    if (sol === null || !Number.isFinite(sol)) return '—'
+function fmtSol(sol: number): string {
+    if (!Number.isFinite(sol)) return '0.0'
     return sol.toFixed(2)
 }
 
@@ -51,6 +62,12 @@ function fmtAgo(tsMs: number): string {
     if (!tsMs) return ''
     try { return formatDistanceToNow(new Date(tsMs), { addSuffix: false }) }
     catch { return '' }
+}
+
+function fmtCount(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+    if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`
+    return String(n)
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -69,6 +86,208 @@ const PROTOCOLS: Record<
         icon: bonkIcon,
         title: 'bonk.fun'
     }
+}
+
+const TERMINAL_META: Record<Terminal, { icon: string; label: string }> = {
+    axiom: { icon: axiomIcon, label: 'Axiom' },
+    padre: { icon: padreIcon, label: 'Padre' },
+    gmgn:  { icon: gmgnIcon,  label: 'GMGN'  },
+}
+
+// ─── X entity icon ───────────────────────────────────────────────────────────
+
+function XEntityIcon({ metadata }: { metadata: Metadata }) {
+    const xtype = metadata.xtype?.[0]
+    if (!xtype || !metadata.xlink) return null
+
+    const url = safeUrl(metadata.xlink)
+    if (!url) return null
+
+    const Icon = xtype === 'community' ? Users
+               : xtype === 'post'      ? Feather
+               : xtype === 'user'      ? User
+               : null
+
+    if (!Icon) return null
+
+    return (
+        <a href={url} target='_blank' rel='noreferrer'
+           className='text-[#5dbcff] hover:text-[#5dbcff]/80 transition-colors'
+           title={url}>
+            <Icon className='h-4 w-4' />
+        </a>
+    )
+}
+
+// ─── Community hover card ────────────────────────────────────────────────────
+
+function CommunityCard({
+    metadata,
+    creatorLabel,
+}: {
+    metadata: Metadata
+    creatorLabel: string | undefined
+}) {
+    const community = metadata.xcommunity
+    if (!community) return <XEntityIcon metadata={metadata} />
+
+    const url = metadata.xlink ? safeUrl(metadata.xlink) : ''
+    const creator = community.creator
+
+    return (
+        <HoverCard openDelay={10} closeDelay={100}>
+            <HoverCardTrigger asChild>
+                <span className='inline-flex items-center gap-1 cursor-pointer'>
+                    {creatorLabel ? (
+                        <div className='bg-[#5dbcff]/15 text-[#5dbcff] text-xs flex space-x-2 px-1.5 py-0.5 rounded-sm'>
+                            <a href={url || undefined} target='_blank' rel='noreferrer'
+                                className='text-[#5dbcff] hover:text-[#5dbcff]/80 transition-colors'>
+                                <Users className='size-4' />
+                            </a>
+                            <span className='text-white'>/</span>
+                            <span className='font-medium uppercase'>{creatorLabel}</span>
+                        </div>
+                    ) : (
+                        <a href={url || undefined} target='_blank' rel='noreferrer'
+                            className='text-[#5dbcff] hover:text-[#5dbcff]/80 transition-colors'>
+                            <Users className='h-4 w-4' />
+                        </a>
+                    )}
+                </span>
+            </HoverCardTrigger>
+            <HoverCardContent
+                side='top'
+                align='start'
+                className='w-60 bg-zinc-900/70 backdrop-blur border-line p-0 overflow-hidden'
+            >
+                {/* banner */}
+                {community.banner && (
+                    <div className='h-16 w-full overflow-hidden'>
+                        <img src={community.banner} alt='' className='h-full w-full object-cover' draggable={false} />
+                    </div>
+                )}
+
+                <div className='px-3 py-2.5 space-y-2'>
+                    {/* community info */}
+                    <div>
+                        <div className='text-sm font-semibold text-white'>{community.name}</div>
+                        <div className='flex items-center gap-1 mt-0.5'>
+                            {community.access && (
+                                <span className='text-[10px] text-muted lowercase'>{community.access}</span>
+                            )}
+                            <span className='text-[10px] text-muted'>/</span>
+                            <span className='text-[10px] text-muted'>
+                                {fmtCount(community.member_count)} members
+                            </span>
+                            {community.created_at > 0 && (
+                                <>
+                                    <span className='text-[10px] text-muted'>/</span>
+                                    <span className='text-[10px] text-indigo-400'>
+                                        {fmtAgo(community.created_at)} ago
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                        {community.description && (
+                            <p className='text-xs text-white mt-1 line-clamp-2'>{community.description}</p>
+                        )}
+                    </div>
+
+                    {/* creator */}
+                    {creator && (
+                        <>
+                            <Separator className='opacity-50' />
+                            <CreatorRow community={community} />
+                        </>
+                    )}
+                </div>
+            </HoverCardContent>
+        </HoverCard>
+    )
+}
+
+function CreatorRow({ community }: { community: XCommunity }) {
+    const { creatorLabels, setCreatorLabel } = useSettings()
+    const creator = community.creator!
+
+    const [editing, setEditing] = useState(false)
+    const [editValue, setEditValue] = useState('')
+
+    const currentLabel = creatorLabels[creator.id]
+
+    const startEdit = () => {
+        setEditValue(currentLabel ?? creator.name ?? '')
+        setEditing(true)
+    }
+
+    const saveEdit = async () => {
+        const trimmed = editValue.trim()
+        if (!trimmed) return
+        await setCreatorLabel(creator.id, trimmed)
+        toast.success(`Creator label saved`)
+        setEditing(false)
+    }
+
+    return (
+        <div className='flex items-center gap-2'>
+            {creator.avatar && (
+                <Avatar className='size-10 rounded-full shrink-0'>
+                    <AvatarImage src={creator.avatar} className='rounded-full object-cover' />
+                    <AvatarFallback className='rounded-full bg-white/5 text-[10px]'>
+                        {(creator.name ?? '?').slice(0, 2)}
+                    </AvatarFallback>
+                </Avatar>
+            )}
+            <div className='min-w-0 flex-1'>
+                <div className='flex items-center gap-1'>
+                    {editing ? (
+                        <input
+                            autoFocus
+                            value={editValue}
+                            maxLength={16}
+                            onChange={e => setEditValue(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); void saveEdit() }
+                                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setEditing(false) }
+                            }}
+                            className='h-5 w-full rounded bg-white/10 border-none px-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-white/50'
+                        />
+                    ) : (
+                        <>
+                            <span className='text-sm font-medium text-white truncate'>
+                                {currentLabel ?? creator.name ?? 'Unknown'}
+                            </span>
+                            {creator.is_blue_verified && (
+                                <BadgeCheck className='size-3 text-sky-400 relative top-px' />
+                            )}
+                            <button
+                                type='button'
+                                onClick={e => { e.preventDefault(); e.stopPropagation(); startEdit() }}
+                                className='text-muted/80 hover:text-zinc-100 cursor-pointer transition-colors shrink-0 ml-0.5'
+                                title='Set custom name'
+                            >
+                                <Pencil className='size-3 relative top-px' />
+                            </button>
+                        </>
+                    )}
+                </div>
+
+                {!editing && creator.screen_name && (
+                    <span className='text-xs font-medium text-white'>@{creator.screen_name}</span>
+                )}
+                {!editing && (
+                    <div className='flex items-center gap-2 mt-0.5'>
+                        <span className='text-[10px] font-medium text-muted'>
+                            {fmtCount(creator.followers_count)} followers
+                        </span>
+                        <span className='text-[10px] font-medium text-muted'>
+                            {fmtCount(creator.following_count)} following
+                        </span>
+                    </div>
+                )}
+            </div>
+        </div>
+    )
 }
 
 // ─── LabelModal ──────────────────────────────────────────────────────────────
@@ -132,22 +351,22 @@ function LabelModal({
 function LastTokenCard({
     t,
     solPrice,
+    terminal,
 }: {
     t: LastToken
     solPrice: number | null
+    terminal: Terminal
 }) {
-    const mcUsd    = solPrice && t.market_cap > 0               ? t.market_cap * solPrice : null
-    const athMcUsd = t.peak_mcap != null && t.peak_mcap > 0     ? t.peak_mcap             : null
+    const mcUsd    = solPrice && t.market_cap > 0 ? t.market_cap : null
+    const athUsd   = t.ath_mcap > 0               ? t.ath_mcap             : null
     const agoText  = t.created_at ? fmtAgo(t.created_at) : ''
     const isMigrated = t.is_migrated === true
 
-    const dexCls =
-        t.is_dex_paid === true  ? 'text-emerald-400' :
-        t.is_dex_paid === false ? 'text-red-400'     : 'text-zinc-600'
+    const dexCls = t.dex_paid ? 'text-emerald-400' : 'text-red-400'
 
     return (
         <a
-            href={AXIOM_URL(t.address)}
+            href={terminalLink(t.address, terminal)}
             target='_blank'
             rel='noreferrer'
             className={[
@@ -167,13 +386,10 @@ function LastTokenCard({
             </Avatar>
 
             <div className='min-w-0 flex-1'>
-                {/* ticker + name + migrated crown */}
+                {/* ticker + migrated crown */}
                 <div className='flex items-center gap-1.5 min-w-0'>
                     <span className='text-sm font-semibold text-zinc-100 shrink-0'>
                         {t.ticker.toUpperCase()}
-                    </span>
-                    <span className='text-sm font-normal text-muted truncate'>
-                        {t.name}
                     </span>
                     {isMigrated && (
                         <Crown className='h-3.5 w-3.5 text-amber-400 shrink-0 ml-auto' />
@@ -189,33 +405,28 @@ function LastTokenCard({
                         </span>
                     )}
 
-                    {/* current mcap + ath mcap рядом */}
                     {mcUsd !== null && (
                         <span className='inline-flex items-center gap-1 text-xs text-white/80'>
                             <ChartNoAxesCombined className='size-4' />
                             <span className='tabular-nums text-emerald-300 font-medium'>{fmtUsdCap(mcUsd)}</span>
-                            {athMcUsd !== null && (
+                            {athUsd !== null && (
                                 <>
                                     <Zap className='size-3.5 text-white/80' />
-                                    <span className='tabular-nums text-amber-300 font-medium'>{fmtUsdCap(athMcUsd)}</span>
+                                    <span className='tabular-nums text-amber-300 font-medium'>{fmtUsdCap(athUsd)}</span>
                                 </>
                             )}
                         </span>
                     )}
 
-                    {t.total_fees !== null && (
-                        <span className='inline-flex items-center gap-1 text-xs text-white/80'>
-                            <HandCoins className='size-4' />
-                            <span className='tabular-nums text-violet-400 font-medium'>{fmtSol(t.total_fees)} SOL</span>
-                        </span>
-                    )}
+                    <span className='inline-flex items-center gap-1 text-xs text-white/80'>
+                        <HandCoins className='size-4' />
+                        <span className='tabular-nums text-violet-400 font-medium'>{fmtSol(t.total_fee ?? 0)} SOL</span>
+                    </span>
 
-                    {t.is_dex_paid !== null && (
-                        <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${dexCls}`}>
-                            <BadgeDollarSign className='h-4 w-4' />
-                            DEX
-                        </span>
-                    )}
+                    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${dexCls}`}>
+                        <BadgeDollarSign className='h-4 w-4' />
+                        DEX
+                    </span>
                 </div>
             </div>
         </a>
@@ -231,16 +442,17 @@ export function TokenRow({
     item: TokenCardModel
     solPriceUsd: number | null
 }) {
-    const { token, dev, lastTokens, metadata, metaStatus } = item
-    const { walletLabels, addToBlacklist, isBlacklisted } = useSettings()
+    const { token, dev, lastTokens } = item
+    const metadata = token.metadata
+    const { settings, walletLabels, creatorLabels, addToBlacklist, isBlacklisted } = useSettings()
+    const termMeta = TERMINAL_META[settings.terminal]
 
     const [labelModalOpen, setLabelModalOpen] = useState(false)
 
     const devLabel  = walletLabels[dev.address]
-    const rawTicker = metadata?.ticker || token.ticker || ''
-    const ticker    = rawTicker.trim() ? rawTicker.toUpperCase() : 'NA'
-    const name      = metadata?.name || token.name
-    const avatarUrl = metadata?.image_url ? safeUrl(metadata.image_url) : ''
+    const ticker    = token.ticker?.trim() ? token.ticker.toUpperCase() : 'NA'
+    const name      = token.name
+    const avatarUrl = metadata?.image ? safeUrl(metadata.image) : ''
 
     // mcap нового токена в USD
     const newMcUsd = solPriceUsd && token.market_cap > 0
@@ -249,9 +461,13 @@ export function TokenRow({
 
     const links = useMemo(() => ({
         website:  metadata?.website  ? safeUrl(metadata.website)  : '',
-        twitter:  metadata?.twitter  ? safeUrl(metadata.twitter)  : '',
         telegram: metadata?.telegram ? safeUrl(metadata.telegram) : '',
-    }), [metadata?.website, metadata?.twitter, metadata?.telegram])
+    }), [metadata?.website, metadata?.telegram])
+
+    // creator label for community hover card badge
+    const creatorLabel = metadata?.xcommunity?.creator
+        ? creatorLabels[metadata.xcommunity.creator.id]
+        : undefined
 
     const protocol   = token.protocol
     const proto      = protocol ? PROTOCOLS[protocol] : null
@@ -276,16 +492,6 @@ export function TokenRow({
         await addToBlacklist(dev.address)
         toast.success('Dev wallet blacklisted')
     }
-
-    const MetaIcon =
-        metaStatus === 'loading' ? CircleDashed :
-        metaStatus === 'ready'   ? CheckCircle2 :
-        metaStatus === 'error'   ? TriangleAlert : null
-
-    const metaCls =
-        metaStatus === 'loading' ? 'text-zinc-400' :
-        metaStatus === 'ready'   ? 'text-emerald-300' :
-        metaStatus === 'error'   ? 'text-red-300' : 'text-zinc-400'
 
     const iconLinkCls = 'hover:text-zinc-200 transition-colors'
 
@@ -347,17 +553,18 @@ export function TokenRow({
                             </a>
                         )}
 
-                        <a href={AXIOM_URL(token.address)} target='_blank' rel='noreferrer'
-                           title='View on Axiom' className='hover:opacity-80 transition-opacity'>
-                            <img src={axiomIcon} alt='Axiom' className='h-4 w-4' draggable={false} />
+                        <a href={terminalLink(token.address, settings.terminal)} target='_blank' rel='noreferrer'
+                           title={`View on ${termMeta.label}`} className='hover:opacity-80 transition-opacity'>
+                            <img src={termMeta.icon} alt={termMeta.label} className='h-4 w-4' draggable={false} />
                         </a>
 
-                        {links.twitter && (
-                            <a href={links.twitter} target='_blank' rel='noreferrer'
-                               className='text-[#5dbcff] hover:text-[#5dbcff]/80 transition-colors' title={links.twitter}>
-                                <Twitter className='h-4 w-4' />
-                            </a>
-                        )}
+                        {/* X entity: community with hover card, or post/user icon */}
+                        {metadata && metadata.xtype?.[0] === 'community' && metadata.xcommunity ? (
+                            <CommunityCard metadata={metadata} creatorLabel={creatorLabel} />
+                        ) : metadata ? (
+                            <XEntityIcon metadata={metadata} />
+                        ) : null}
+
                         {links.website && (
                             <a href={links.website} target='_blank' rel='noreferrer'
                                className={iconLinkCls} title={links.website}>
@@ -375,18 +582,10 @@ export function TokenRow({
                            target='_blank' rel='noreferrer' className={iconLinkCls}>
                             <Search className='h-4 w-4' />
                         </a>
-
-                        {MetaIcon && (
-                            <MetaIcon className={[
-                                'h-4 w-4',
-                                metaStatus === 'loading' ? 'animate-spin' : '',
-                                metaCls
-                            ].join(' ')} />
-                        )}
                     </div>
                 </div>
 
-                {/* right: mcap + devhold — параллельно аватару и тикеру */}
+                {/* right: mcap + devhold */}
                 <div className='shrink-0 flex flex-col items-end gap-1.5'>
                     {newMcUsd !== null && (
                         <span className='inline-flex items-center gap-1 text-xs text-muted'>
@@ -435,6 +634,15 @@ export function TokenRow({
                     <span className='text-muted font-mono'>rate</span>
                 </span>
 
+                {dev.tokens.avg_ath_mcap > 0 && (
+                    <span className='inline-flex items-center gap-1' title='Avg ATH Market Cap'>
+                        <Zap className='h-3.5 w-3.5 text-muted' />
+                        <span className='tabular-nums text-amber-300 font-medium'>
+                            {fmtUsdCap(dev.tokens.avg_ath_mcap)}
+                        </span>
+                    </span>
+                )}
+
                 <span className='ml-auto inline-flex items-center gap-1.5'>
                     <button
                         type='button'
@@ -467,9 +675,10 @@ export function TokenRow({
                         <div className='flex flex-col gap-2'>
                             {lastTokens.map(t => (
                                 <LastTokenCard
-                                    key={t.address || t.pair}
+                                    key={t.address || t.ticker}
                                     t={t}
                                     solPrice={solPriceUsd}
+                                    terminal={settings.terminal}
                                 />
                             ))}
                         </div>
