@@ -615,14 +615,13 @@ function MainTab({ settings, store }: {
                                 <SuffixInput value={maxCommunityAge} onChange={setMaxCommunityAge} suffix='HR' placeholder='0' error={!!errors.maxCommunityAge} />
                             </div>
                         </div>
-                    </div>
-
-                    <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-violet-500/8 ring-1 ring-violet-500/20'>
-                        <Info className='h-3.5 w-3.5 text-violet-400 shrink-0' />
-                        <p className='text-[11px] text-violet-200/70'>
-                            Only for tokens with <span className='font-semibold text-white'>X Community</span>
-                            {' · '}<span className='font-semibold text-white'>0</span> = disabled
-                        </p>
+                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-violet-500/8 ring-1 ring-violet-500/20'>
+                            <Info className='h-3.5 w-3.5 text-violet-400 shrink-0' />
+                            <p className='text-[11px] text-violet-200/70'>
+                                Only for tokens with <span className='font-semibold text-white'>X Community</span>
+                                {' · '}<span className='font-semibold text-white'>0</span> = disabled
+                            </p>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1301,9 +1300,17 @@ function LabelsTab() {
                     </div>
                 ) : (
                     <div className='space-y-1.5 p-1'>
-                        {creatorEntries.map(([creatorId, label]) => (
+                        {creatorEntries.map(([creatorId, data]) => (
                             <div key={creatorId} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                                <span className='text-violet-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+                                <span
+                                    className='font-medium text-xs uppercase shrink-0'
+                                    style={{ color: data.color }}
+                                >
+                                    {data.label}
+                                </span>
+                                {data.screenName && (
+                                    <span className='text-muted text-xs shrink-0'>@{data.screenName}</span>
+                                )}
                                 <span className='text-muted font-mono text-xs truncate flex-1'>{creatorId}</span>
                                 <button
                                     type='button'
@@ -1324,41 +1331,98 @@ function LabelsTab() {
 
 // --- blacklist tab ---
 
-function BlacklistTab() {
-    const { blacklist, walletLabels, removeFromBlacklist } = useSettings()
-    const entries = [...blacklist]
+type BlacklistView = 'wallets' | 'creators'
 
-    if (entries.length === 0) {
-        return (
-            <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
-                <Ban className='h-8 w-8 opacity-30' />
-                <span className='text-sm'>Blacklist is empty</span>
-                <span className='text-xs opacity-60'>Ban a dev wallet from any token card</span>
-            </div>
-        )
-    }
+function BlacklistTab() {
+    const { blacklist, walletLabels, removeFromBlacklist, creatorBlacklist, removeCreatorFromBlacklist } = useSettings()
+    const [view, setView] = React.useState<BlacklistView>('wallets')
+
+    const walletEntries = [...blacklist]
+    const creatorEntries = Object.entries(creatorBlacklist)
 
     return (
-        <div className='space-y-1.5 p-1'>
-            {entries.map(addr => {
-                const label = walletLabels[addr]
-                return (
-                    <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                        {label && (
-                            <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+        <div className='space-y-4'>
+            {/* toggle */}
+            <div className='px-1'>
+            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+                {(['wallets', 'creators'] as BlacklistView[]).map(v => (
+                    <button
+                        key={v}
+                        type='button'
+                        onClick={() => setView(v)}
+                        className={cn(
+                            'flex-1 rounded-[5px] px-3 py-1.5 text-xs cursor-pointer font-medium transition-colors',
+                            view === v ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
                         )}
-                        <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
-                        <button
-                            type='button'
-                            title='Remove from blacklist'
-                            onClick={() => { void removeFromBlacklist(addr); toast.success('Removed from blacklist') }}
-                            className='shrink-0 text-muted hover:text-rose-400 transition-colors'
-                        >
-                            <X className='h-3.5 w-3.5' />
-                        </button>
+                    >
+                        {v === 'wallets' ? 'Wallet Blacklist' : 'Creator Blacklist'}
+                    </button>
+                ))}
+            </div>
+            </div>
+
+            {/* wallet blacklist */}
+            {view === 'wallets' && (
+                walletEntries.length === 0 ? (
+                    <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                        <Ban className='h-8 w-8 opacity-30' />
+                        <span className='text-sm'>No Blocked Wallets</span>
+                        <span className='text-xs opacity-60'>Ban a dev wallet from any token card</span>
+                    </div>
+                ) : (
+                    <div className='space-y-1.5 p-1'>
+                        {walletEntries.map(addr => {
+                            const label = walletLabels[addr]
+                            return (
+                                <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                    {label && (
+                                        <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+                                    )}
+                                    <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
+                                    <button
+                                        type='button'
+                                        title='Remove from blacklist'
+                                        onClick={() => { void removeFromBlacklist(addr); toast.success('Removed from blacklist') }}
+                                        className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                    >
+                                        <X className='h-3.5 w-3.5' />
+                                    </button>
+                                </div>
+                            )
+                        })}
                     </div>
                 )
-            })}
+            )}
+
+            {/* creator blacklist */}
+            {view === 'creators' && (
+                creatorEntries.length === 0 ? (
+                    <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                        <Ban className='h-8 w-8 opacity-30' />
+                        <span className='text-sm'>No Blocked Creators</span>
+                        <span className='text-xs opacity-60'>Block a creator from the community hover card</span>
+                    </div>
+                ) : (
+                    <div className='space-y-1.5 p-1'>
+                        {creatorEntries.map(([id, screenName]) => (
+                            <div key={id} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                {screenName && (
+                                    <span className='text-rose-300 font-medium text-xs shrink-0'>@{screenName}</span>
+                                )}
+                                <span className='text-muted font-mono text-xs truncate flex-1'>{id}</span>
+                                <button
+                                    type='button'
+                                    title='Unblock creator'
+                                    onClick={() => { void removeCreatorFromBlacklist(id); toast.success('Creator unblocked') }}
+                                    className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                >
+                                    <X className='h-3.5 w-3.5' />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )
+            )}
         </div>
     )
 }

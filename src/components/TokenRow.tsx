@@ -24,7 +24,7 @@ import axiomIcon  from '@/assets/terminals/axiom.svg'
 import padreIcon  from '@/assets/terminals/padre.svg'
 import gmgnIcon   from '@/assets/terminals/gmgn.svg'
 
-import type { Terminal } from '@/context/SettingsContext'
+import type { Terminal, CreatorLabelData } from '@/context/SettingsContext'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -34,7 +34,7 @@ import {
     BadgeDollarSign, ChartNoAxesCombined, HandCoins,
     Tag, Ban, Clock, Crown, Zap,
     Feather, User, Users,
-    Pencil, BadgeCheck,
+    Pencil, BadgeCheck, Check, X,
 } from 'lucide-react'
 
 import type { TokenCardModel, LastToken, Metadata, XCommunity } from '@/hooks/useSparkTokens'
@@ -70,6 +70,14 @@ function fmtCount(n: number): string {
     return String(n)
 }
 
+function fmtShortDate(tsMs: number): string {
+    if (!tsMs) return ''
+    try {
+        const d = new Date(tsMs)
+        return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    } catch { return '' }
+}
+
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const PROTOCOLS: Record<
@@ -93,6 +101,8 @@ const TERMINAL_META: Record<Terminal, { icon: string; label: string }> = {
     padre: { icon: padreIcon, label: 'Padre' },
     gmgn:  { icon: gmgnIcon,  label: 'GMGN'  },
 }
+
+const DEFAULT_LABEL_COLOR = '#7dd3fc'
 
 // ─── X entity icon ───────────────────────────────────────────────────────────
 
@@ -123,29 +133,33 @@ function XEntityIcon({ metadata }: { metadata: Metadata }) {
 
 function CommunityCard({
     metadata,
-    creatorLabel,
+    creatorLabelData,
 }: {
     metadata: Metadata
-    creatorLabel: string | undefined
+    creatorLabelData: CreatorLabelData | undefined
 }) {
     const community = metadata.xcommunity
     if (!community) return <XEntityIcon metadata={metadata} />
 
     const url = metadata.xlink ? safeUrl(metadata.xlink) : ''
     const creator = community.creator
+    const badgeColor = creatorLabelData?.color ?? '#5dbcff'
 
     return (
         <HoverCard openDelay={10} closeDelay={100}>
             <HoverCardTrigger asChild>
                 <span className='inline-flex items-center gap-1 cursor-pointer'>
-                    {creatorLabel ? (
-                        <div className='bg-[#5dbcff]/15 text-[#5dbcff] text-xs flex space-x-2 px-1.5 py-0.5 rounded-sm'>
+                    {creatorLabelData ? (
+                        <div
+                            className='text-xs flex space-x-2 px-1.5 py-0.5 rounded-sm'
+                            style={{ backgroundColor: `${badgeColor}20`, color: badgeColor }}
+                        >
                             <a href={url || undefined} target='_blank' rel='noreferrer'
-                                className='text-[#5dbcff] hover:text-[#5dbcff]/80 transition-colors'>
+                                className='hover:opacity-80 transition-opacity'>
                                 <Users className='size-4' />
                             </a>
                             <span className='text-white'>/</span>
-                            <span className='font-medium uppercase'>{creatorLabel}</span>
+                            <span className='font-medium uppercase'>{creatorLabelData.label}</span>
                         </div>
                     ) : (
                         <a href={url || undefined} target='_blank' rel='noreferrer'
@@ -158,19 +172,26 @@ function CommunityCard({
             <HoverCardContent
                 side='top'
                 align='start'
-                className='w-60 bg-zinc-900/70 backdrop-blur border-line p-0 overflow-hidden'
+                className='w-72 bg-zinc-900/70 backdrop-blur border-line p-0 overflow-hidden'
             >
                 {/* banner */}
                 {community.banner && (
-                    <div className='h-16 w-full overflow-hidden'>
-                        <img src={community.banner} alt='' className='h-full w-full object-cover' draggable={false} />
+                    <div className='w-full overflow-hidden'>
+                        <img src={community.banner} alt='' className='w-full object-contain' draggable={false} />
                     </div>
                 )}
 
-                <div className='px-3 py-2.5 space-y-2'>
+                <div className='px-3 py-3 space-y-2.5'>
                     {/* community info */}
                     <div>
-                        <div className='text-sm font-semibold text-white'>{community.name}</div>
+                        {url ? (
+                            <a href={url} target='_blank' rel='noreferrer'
+                               className='text-sm font-semibold text-white hover:underline'>
+                                {community.name}
+                            </a>
+                        ) : (
+                            <span className='text-sm font-semibold text-white'>{community.name}</span>
+                        )}
                         <div className='flex items-center gap-1 mt-0.5'>
                             {community.access && (
                                 <span className='text-[10px] text-muted lowercase'>{community.access}</span>
@@ -189,7 +210,7 @@ function CommunityCard({
                             )}
                         </div>
                         {community.description && (
-                            <p className='text-xs text-white mt-1 line-clamp-2'>{community.description}</p>
+                            <p className='text-xs text-white/70 mt-1.5 line-clamp-3'>{community.description}</p>
                         )}
                     </div>
 
@@ -207,58 +228,97 @@ function CommunityCard({
 }
 
 function CreatorRow({ community }: { community: XCommunity }) {
-    const { creatorLabels, setCreatorLabel } = useSettings()
+    const { creatorLabels, setCreatorLabel, addCreatorToBlacklist, isCreatorBlacklisted } = useSettings()
     const creator = community.creator!
 
     const [editing, setEditing] = useState(false)
     const [editValue, setEditValue] = useState('')
+    const [editColor, setEditColor] = useState(DEFAULT_LABEL_COLOR)
 
-    const currentLabel = creatorLabels[creator.id]
+    const currentLabelData = creatorLabels[creator.id]
 
     const startEdit = () => {
-        setEditValue(currentLabel ?? creator.name ?? '')
+        setEditValue(currentLabelData?.label ?? creator.name ?? '')
+        setEditColor(currentLabelData?.color ?? DEFAULT_LABEL_COLOR)
         setEditing(true)
     }
 
     const saveEdit = async () => {
         const trimmed = editValue.trim()
         if (!trimmed) return
-        await setCreatorLabel(creator.id, trimmed)
-        toast.success(`Creator label saved`)
+        await setCreatorLabel(creator.id, trimmed, editColor, creator.screen_name ?? '')
+        toast.success('Creator label saved')
         setEditing(false)
     }
 
+    const onBlockCreator = async () => {
+        if (isCreatorBlacklisted(creator.id)) {
+            toast.error('Already blocked')
+            return
+        }
+        await addCreatorToBlacklist(creator.id, creator.screen_name ?? '')
+        toast.success('Creator blocked')
+    }
+
     return (
-        <div className='flex items-center gap-2'>
+        <div className={`flex gap-2 ${editing ? 'items-center' : 'items-start'}`}>
             {creator.avatar && (
-                <Avatar className='size-10 rounded-full shrink-0'>
-                    <AvatarImage src={creator.avatar} className='rounded-full object-cover' />
-                    <AvatarFallback className='rounded-full bg-white/5 text-[10px]'>
+                <Avatar className='size-10 rounded-lg shrink-0'>
+                    <AvatarImage src={creator.avatar} className='rounded-lg object-cover' />
+                    <AvatarFallback className='rounded-lg bg-white/5 text-[10px]'>
                         {(creator.name ?? '?').slice(0, 2)}
                     </AvatarFallback>
                 </Avatar>
             )}
             <div className='min-w-0 flex-1'>
-                <div className='flex items-center gap-1'>
-                    {editing ? (
+                {editing ? (
+                    <div className='flex items-center gap-1'>
+                        <label className='relative shrink-0 size-5 rounded cursor-pointer hover:opacity-80 transition-opacity' style={{ backgroundColor: editColor }}>
+                            <input
+                                type='color'
+                                value={editColor}
+                                onChange={e => { e.stopPropagation(); setEditColor(e.target.value) }}
+                                className='absolute inset-0 size-full cursor-pointer opacity-0'
+                                style={{ colorScheme: 'dark' }}
+                            />
+                        </label>
                         <input
                             autoFocus
                             value={editValue}
                             maxLength={16}
+                            placeholder='Label...'
                             onChange={e => setEditValue(e.target.value)}
                             onKeyDown={e => {
                                 if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); void saveEdit() }
                                 if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setEditing(false) }
                             }}
-                            className='h-5 w-full rounded bg-white/10 border-none px-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-white/50'
+                            className='h-5 flex-1 min-w-0 rounded bg-white/10 border-none px-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-white/50'
                         />
-                    ) : (
-                        <>
-                            <span className='text-sm font-medium text-white truncate'>
-                                {currentLabel ?? creator.name ?? 'Unknown'}
+                        <button
+                            type='button'
+                            onClick={e => { e.preventDefault(); e.stopPropagation(); void saveEdit() }}
+                            className='text-emerald-400 hover:text-emerald-300 cursor-pointer transition-colors shrink-0'
+                            title='Save'
+                        >
+                            <Check className='size-3.5' />
+                        </button>
+                        <button
+                            type='button'
+                            onClick={e => { e.preventDefault(); e.stopPropagation(); setEditing(false) }}
+                            className='text-red-400/80 hover:text-red-300 cursor-pointer transition-colors shrink-0'
+                            title='Cancel'
+                        >
+                            <X className='size-3.5' />
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <div className='flex items-center gap-1'>
+                            <span className='text-xs font-medium text-white truncate'>
+                                {currentLabelData?.label ?? creator.name ?? 'Unknown'}
                             </span>
                             {creator.is_blue_verified && (
-                                <BadgeCheck className='size-3 text-sky-400 relative top-px' />
+                                <BadgeCheck className='size-3 text-sky-400' />
                             )}
                             <button
                                 type='button'
@@ -266,25 +326,45 @@ function CreatorRow({ community }: { community: XCommunity }) {
                                 className='text-muted/80 hover:text-zinc-100 cursor-pointer transition-colors shrink-0 ml-0.5'
                                 title='Set custom name'
                             >
-                                <Pencil className='size-3 relative top-px' />
+                                <Pencil className='size-3' />
                             </button>
-                        </>
+                        </div>
+
+                        {creator.screen_name && (
+                            <div className='flex items-center gap-1 mt-0.5'>
+                                <a
+                                    href={`https://x.com/${creator.screen_name}`}
+                                    target='_blank' rel='noreferrer'
+                                    className='text-xs text-muted hover:underline'
+                                >
+                                    @{creator.screen_name}
+                                </a>
+                                <button
+                                    type='button'
+                                    onClick={e => { e.preventDefault(); e.stopPropagation(); void onBlockCreator() }}
+                                    className='text-red-500/80 hover:text-red-400 cursor-pointer transition-colors shrink-0'
+                                    title='Block creator'
+                                >
+                                    <Ban className='size-3' />
+                                </button>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                <div className='flex items-center gap-2 mt-0.5'>
+                    <span className='text-[10px] font-medium text-muted'>
+                        {fmtCount(creator.followers_count)} followers
+                    </span>
+                    <span className='text-[10px] font-medium text-muted'>
+                        {fmtCount(creator.following_count)} following
+                    </span>
+                    {creator.joined_at > 0 && (
+                        <span className='text-[10px] font-medium text-indigo-400'>
+                            {fmtShortDate(creator.joined_at)}
+                        </span>
                     )}
                 </div>
-
-                {!editing && creator.screen_name && (
-                    <span className='text-xs font-medium text-white'>@{creator.screen_name}</span>
-                )}
-                {!editing && (
-                    <div className='flex items-center gap-2 mt-0.5'>
-                        <span className='text-[10px] font-medium text-muted'>
-                            {fmtCount(creator.followers_count)} followers
-                        </span>
-                        <span className='text-[10px] font-medium text-muted'>
-                            {fmtCount(creator.following_count)} following
-                        </span>
-                    </div>
-                )}
             </div>
         </div>
     )
@@ -386,11 +466,16 @@ function LastTokenCard({
             </Avatar>
 
             <div className='min-w-0 flex-1'>
-                {/* ticker + migrated crown */}
+                {/* ticker + address + migrated crown */}
                 <div className='flex items-center gap-1.5 min-w-0'>
                     <span className='text-sm font-semibold text-zinc-100 shrink-0'>
                         {t.ticker.toUpperCase()}
                     </span>
+                    {t.address && (
+                        <span className='text-xs text-muted truncate'>
+                            {t.address.slice(0, 4)}...{t.address.slice(-4)}
+                        </span>
+                    )}
                     {isMigrated && (
                         <Crown className='h-3.5 w-3.5 text-amber-400 shrink-0 ml-auto' />
                     )}
@@ -465,7 +550,7 @@ export function TokenRow({
     }), [metadata?.website, metadata?.telegram])
 
     // creator label for community hover card badge
-    const creatorLabel = metadata?.xcommunity?.creator
+    const creatorLabelData = metadata?.xcommunity?.creator
         ? creatorLabels[metadata.xcommunity.creator.id]
         : undefined
 
@@ -560,7 +645,7 @@ export function TokenRow({
 
                         {/* X entity: community with hover card, or post/user icon */}
                         {metadata && metadata.xtype?.[0] === 'community' && metadata.xcommunity ? (
-                            <CommunityCard metadata={metadata} creatorLabel={creatorLabel} />
+                            <CommunityCard metadata={metadata} creatorLabelData={creatorLabelData} />
                         ) : metadata ? (
                             <XEntityIcon metadata={metadata} />
                         ) : null}

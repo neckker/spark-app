@@ -259,7 +259,7 @@ function passesFeeFilter(
 // --- hook ---
 
 export function useSparkTokens() {
-    const { settings, isBlacklisted } = useSettings()
+    const { settings, isBlacklisted, isCreatorBlacklisted } = useSettings()
     const playSound = useNotificationSound(settings.soundEnabled, settings.soundVolume)
 
     // --- refs for latest settings (avoid stale closure in ws.onmessage) ---
@@ -283,12 +283,14 @@ export function useSparkTokens() {
         maxCommunityAge: settings.maxCommunityAge,
     })
     const isBlacklistedRef = useRef(isBlacklisted)
+    const isCreatorBlacklistedRef = useRef(isCreatorBlacklisted)
 
     useEffect(() => { playSoundRef.current = playSound }, [playSound])
     useEffect(() => { openModeRef.current = settings.openMode }, [settings.openMode])
     useEffect(() => { openInBrowserRef.current = settings.openInBrowser }, [settings.openInBrowser])
     useEffect(() => { terminalRef.current = settings.terminal }, [settings.terminal])
     useEffect(() => { isBlacklistedRef.current = isBlacklisted }, [isBlacklisted])
+    useEffect(() => { isCreatorBlacklistedRef.current = isCreatorBlacklisted }, [isCreatorBlacklisted])
     useEffect(() => {
         filtersRef.current = {
             devMin: settings.devMin,
@@ -465,6 +467,9 @@ export function useSparkTokens() {
                 if (maxCommunityAge > 0 && metadata.xcommunity.created_at > 0) {
                     const ageMs = Date.now() - metadata.xcommunity.created_at
                     if (ageMs > maxCommunityAge * 3_600_000) return
+                }
+                if (metadata.xcommunity.creator) {
+                    if (isCreatorBlacklistedRef.current(metadata.xcommunity.creator.id)) return
                 }
             }
 

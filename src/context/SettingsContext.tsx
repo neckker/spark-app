@@ -55,8 +55,18 @@ export const DEFAULT_SETTINGS: Settings = {
 /** address → human label (до 10 символов) */
 export type WalletLabels = Record<string, string>
 
-/** creator_id → custom display name */
-export type CreatorLabels = Record<string, string>
+/** creator label data with color and screen name */
+export type CreatorLabelData = {
+    label: string
+    color: string
+    screenName: string
+}
+
+/** creator_id → label data */
+export type CreatorLabels = Record<string, CreatorLabelData>
+
+/** creator_id → screen_name (for display in blacklist) */
+export type CreatorBlacklist = Record<string, string>
 
 interface SettingsCtx {
     settings: Settings
@@ -71,14 +81,20 @@ interface SettingsCtx {
 
     // creator labels (community creators)
     creatorLabels: CreatorLabels
-    setCreatorLabel: (creatorId: string, label: string) => Promise<void>
+    setCreatorLabel: (creatorId: string, label: string, color: string, screenName: string) => Promise<void>
     removeCreatorLabel: (creatorId: string) => Promise<void>
 
-    // blacklist
+    // wallet blacklist
     blacklist: Set<string>
     addToBlacklist: (address: string) => Promise<void>
     removeFromBlacklist: (address: string) => Promise<void>
     isBlacklisted: (address: string) => boolean
+
+    // creator blacklist
+    creatorBlacklist: CreatorBlacklist
+    addCreatorToBlacklist: (id: string, screenName: string) => Promise<void>
+    removeCreatorFromBlacklist: (id: string) => Promise<void>
+    isCreatorBlacklisted: (id: string) => boolean
 }
 
 // ─── context ─────────────────────────────────────────────────────────────────
@@ -98,6 +114,10 @@ const SettingsContext = createContext<SettingsCtx>({
     addToBlacklist: async () => {},
     removeFromBlacklist: async () => {},
     isBlacklisted: () => false,
+    creatorBlacklist: {},
+    addCreatorToBlacklist: async () => {},
+    removeCreatorFromBlacklist: async () => {},
+    isCreatorBlacklisted: () => false,
 })
 
 // ─── provider ────────────────────────────────────────────────────────────────
@@ -108,6 +128,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const [walletLabels, setWalletLabels]   = useState<WalletLabels>({})
     const [creatorLabels, setCreatorLabels] = useState<CreatorLabels>({})
     const [blacklist, setBlacklist]         = useState<Set<string>>(new Set())
+    const [creatorBlacklist, setCreatorBlacklist] = useState<CreatorBlacklist>({})
     const [ready, setReady]                 = useState(false)
 
     useEffect(() => {
@@ -131,8 +152,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const minCreatorFollowers   = (await store.get<number>('minCreatorFollowers'))   ?? DEFAULT_SETTINGS.minCreatorFollowers
             const maxCommunityAge       = (await store.get<number>('maxCommunityAge'))       ?? DEFAULT_SETTINGS.maxCommunityAge
             const rawLabels             = (await store.get<WalletLabels>('walletLabels'))    ?? {}
-            const rawCreatorLabels   = (await store.get<CreatorLabels>('creatorLabels')) ?? {}
+            const rawCreatorLabels   = (await store.get<Record<string, unknown>>('creatorLabels')) ?? {}
             const rawBlacklist       = (await store.get<string[]>('blacklist'))          ?? []
+            const rawCreatorBlacklist = (await store.get<CreatorBlacklist>('creatorBlacklist')) ?? {}
+
+            // Migrate old string-format creator labels to new object format
+            const migratedCreatorLabels: CreatorLabels = {}
+            for (const [id, value] of Object.entries(rawCreatorLabels)) {
+                if (typeof value === 'string') {
+                    migratedCreatorLabels[id] = { label: value, color: '#7dd3fc', screenName: '' }
+                } else if (value && typeof value === 'object') {
+                    migratedCreatorLabels[id] = value as CreatorLabelData
+                }
+            }
 
             setSettings({
                 devMin, devMax, migrationPct, minAvgAthMcap,
@@ -142,8 +174,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
                 minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge,
             })
             setWalletLabels(rawLabels)
-            setCreatorLabels(rawCreatorLabels)
+            setCreatorLabels(migratedCreatorLabels)
             setBlacklist(new Set(rawBlacklist))
+            setCreatorBlacklist(rawCreatorBlacklist)
             setReady(true)
         }
         load().catch(() => setReady(true))
@@ -172,9 +205,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         await store.save()
     }
 
-    const setCreatorLabel = async (creatorId: string, label: string) => {
+    const setCreatorLabel = async (creatorId: string, label: string, color: string, screenName: string) => {
         const trimmed = label.trim().slice(0, 16)
-        const next = { ...creatorLabels, [creatorId]: trimmed }
+        const data: CreatorLabelData = { label: trimmed, color, screenName }
+        const next = { ...creatorLabels, [creatorId]: data }
         setCreatorLabels(next)
         await store.set('creatorLabels', next)
         await store.save()
@@ -208,12 +242,33 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         [blacklist]
     )
 
+    const addCreatorToBlacklist = async (id: string, screenName: string) => {
+        const next = { ...creatorBlacklist, [id]: screenName }
+        setCreatorBlacklist(next)
+        await store.set('creatorBlacklist', next)
+        await store.save()
+    }
+
+    const removeCreatorFromBlacklist = async (id: string) => {
+        const next = { ...creatorBlacklist }
+        delete next[id]
+        setCreatorBlacklist(next)
+        await store.set('creatorBlacklist', next)
+        await store.save()
+    }
+
+    const isCreatorBlacklisted = useCallback(
+        (id: string) => id in creatorBlacklist,
+        [creatorBlacklist]
+    )
+
     return (
         <SettingsContext.Provider value={{
             settings, store, ready, patch,
             walletLabels, setWalletLabel, removeWalletLabel,
             creatorLabels, setCreatorLabel, removeCreatorLabel,
             blacklist, addToBlacklist, removeFromBlacklist, isBlacklisted,
+            creatorBlacklist, addCreatorToBlacklist, removeCreatorFromBlacklist, isCreatorBlacklisted,
         }}>
             {children}
         </SettingsContext.Provider>
