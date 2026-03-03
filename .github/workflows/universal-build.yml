@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 env:
-  VITE_WS_URL: wss://spark.solyth.fun/hub/ws
+  VITE_WS_URL: wss://sequoia.solyth.fun/hub/ws
   VITE_BACKEND_URL: https://spark-api.solyth.fun
   PUBLIC_REPO: solythbot/spark-updates
 
