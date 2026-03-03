@@ -136,24 +136,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
-          set -euo pipefail
           VERSION=$(cat src-tauri/tauri.conf.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
           echo "Version: $VERSION"
 
+          # Create release, ignore error if already exists
           gh release create "v$VERSION" \
             --repo solythbot/spark-updates \
             --title "Spark v$VERSION" \
             --notes "Auto-update release for v$VERSION" \
-            --draft=false \
-            || echo "Release already exists, continuing..."
+            --draft=false 2>/dev/null || true
 
+          # Upload Windows installer artifacts
           for f in \
             src-tauri/target/release/bundle/nsis/*.nsis.zip \
             src-tauri/target/release/bundle/nsis/*.nsis.zip.sig \
             src-tauri/target/release/bundle/msi/*.msi.zip \
             src-tauri/target/release/bundle/msi/*.msi.zip.sig; do
-            [ -f "$f" ] && gh release upload "v$VERSION" "$f" \
-              --repo solythbot/spark-updates --clobber || true
+            if [ -f "$f" ]; then
+              echo "Uploading: $f"
+              gh release upload "v$VERSION" "$f" \
+                --repo solythbot/spark-updates --clobber
+            fi
           done
 
       - name: Upload latest.json to spark-updates
@@ -162,17 +165,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
-          set -euo pipefail
           VERSION=$(cat src-tauri/tauri.conf.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
 
-          LATEST_JSON=$(find src-tauri/target -name "latest.json" 2>/dev/null | head -1)
+          # tauri-action@v0 puts latest.json inside bundle directory
+          LATEST_JSON=$(find src-tauri/target/release/bundle -name "latest.json" 2>/dev/null | head -1)
+
           if [ -n "$LATEST_JSON" ]; then
-            echo "Uploading latest.json from: $LATEST_JSON"
+            echo "Found latest.json at: $LATEST_JSON"
             gh release upload "v$VERSION" "$LATEST_JSON" \
               --repo solythbot/spark-updates --clobber
           else
-            echo "latest.json not found, listing build output..."
-            find src-tauri/target/release -maxdepth 4 -name "*.json" | head -20 || true
+            echo "latest.json not found. Searching all of target..."
+            find src-tauri/target -name "latest.json" 2>/dev/null | head -10 || true
+            echo "Make sure TAURI_SIGNING_PRIVATE_KEY secret is set — it is required for latest.json generation"
           fi
 
       - name: Zip macOS .app bundle (portable)
@@ -202,20 +207,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
-          set -euo pipefail
           VERSION=$(cat src-tauri/tauri.conf.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
 
+          # Create release, ignore error if already exists
           gh release create "v$VERSION" \
             --repo solythbot/spark-updates \
             --title "Spark v$VERSION" \
             --notes "Auto-update release for v$VERSION" \
-            --draft=false \
-            || echo "Release already exists, continuing..."
+            --draft=false 2>/dev/null || true
 
+          # Upload macOS update archive and signature
           for f in \
             src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz \
             src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig; do
-            [ -f "$f" ] && gh release upload "v$VERSION" "$f" \
-              --repo solythbot/spark-updates --clobber || true
+            if [ -f "$f" ]; then
+              echo "Uploading: $f"
+              gh release upload "v$VERSION" "$f" \
+                --repo solythbot/spark-updates --clobber
+            fi
           done
-  
