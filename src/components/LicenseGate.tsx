@@ -69,7 +69,7 @@ function getScreenCfg(status: ActiveLicenseStatus, expiresAt: number | null): Sc
         case 'max_activations':
             return {
                 icon: Users,
-                iconCls: 'text-orange-400',
+                iconCls: 'text-red-400',
                 title: 'Activation Limit Reached',
                 description: 'This license has reached its maximum number of device activations.',
                 showInput: true,

@@ -91,7 +91,7 @@ const STATUS_CONFIG = {
     expired:         { icon: ShieldAlert, color: 'text-amber-400',   label: 'Expired'         },
     revoked:         { icon: ShieldAlert, color: 'text-rose-400',    label: 'Revoked'         },
     device_mismatch:  { icon: ShieldAlert, color: 'text-rose-400',    label: 'Device mismatch' },
-    max_activations:  { icon: ShieldAlert, color: 'text-orange-400',  label: 'Limit reached'   },
+    max_activations:  { icon: ShieldAlert, color: 'text-red-400',     label: 'Limit reached'   },
     not_activated:    { icon: ShieldAlert, color: 'text-amber-400',   label: 'Not activated'   },
     no_license:      { icon: ShieldAlert, color: 'text-zinc-400',    label: 'No license'      },
     error:           { icon: ShieldAlert, color: 'text-rose-400',    label: 'Error'           },
