@@ -1,28 +1,21 @@
-name: Build Spark App (macOS universal + Windows)
+name: Build & Publish Spark App
 
 on:
   release:
-    types:
-      - published
+    types: [published]
 
 permissions:
   contents: write
 
-jobs:
-  build:
-    env:
-      VITE_WS_URL: wss://spark.solyth.fun/hub/ws
-      VITE_BACKEND_URL: https://spark-api.solyth.fun
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            args: "--target universal-apple-darwin"
-          - os: windows-latest
-            args: ""
-    runs-on: ${{ matrix.os }}
+env:
+  VITE_WS_URL: wss://spark.solyth.fun/hub/ws
+  VITE_BACKEND_URL: https://spark-api.solyth.fun
+  PUBLIC_REPO: solythbot/spark-updates
 
+jobs:
+  # --- macOS universal (aarch64 + x86_64) ---
+  build-macos:
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,7 +28,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -45,8 +38,7 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Import Apple Developer Certificate (macOS)
-        if: matrix.os == 'macos-latest'
+      - name: Import Apple Developer Certificate
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -62,167 +54,207 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
 
-          openssl pkcs12 -in certificate.p12 -passin pass:"$APPLE_CERTIFICATE_PASSWORD" -info -noout
+          security import certificate.p12 -k build.keychain \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
 
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          CERT_ID=$(security find-identity -v -p codesigning build.keychain \
+            | grep "Developer ID Application" | head -n 1 | awk -F'"' '{print $2}')
 
-          CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | head -n 1 | awk -F'"' '{print $2}')
           if [ -z "$CERT_ID" ]; then
-            echo "Developer ID Application identity not found in keychain"
+            echo "❌ Developer ID Application identity not found"
             security find-identity -v -p codesigning build.keychain || true
             exit 1
           fi
 
-          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
-          echo "Using signing identity: $CERT_ID"
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+          echo "✅ Signing identity: $CERT_ID"
 
-      - name: Build and upload Tauri app (macOS)
-        if: matrix.os == 'macos-latest'
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-        with:
-          releaseId: ${{ github.event.release.id }}
-          args: ${{ matrix.args }}
-          tauriScript: bun run tauri
-
-      - name: Verify & staple macOS app
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/spark.app"
-
-          echo "Verifying codesign..."
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-
-          echo "Stapling notarization ticket..."
-          xcrun stapler staple -v "$APP_PATH"
-
-          echo "Gatekeeper assessment..."
-          spctl -a -vv "$APP_PATH"
-
-      - name: Build and upload Tauri app (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          releaseId: ${{ github.event.release.id }}
-          args: ${{ matrix.args }}
-          tauriScript: bun run tauri
+        run: bun run tauri build --target universal-apple-darwin
 
-      - name: Upload portable Windows exe
-        if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: |
-            src-tauri/target/release/spark.exe
-            src-tauri/target/x86_64-pc-windows-msvc/release/spark.exe
-
-      - name: Upload Windows update artifacts to spark-updates
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
-        run: |
-          VERSION=$(cat src-tauri/tauri.conf.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
-          echo "Version: $VERSION"
-
-          # Create release, ignore error if already exists
-          gh release create "v$VERSION" \
-            --repo solythbot/spark-updates \
-            --title "Spark v$VERSION" \
-            --notes "Auto-update release for v$VERSION" \
-            --draft=false 2>/dev/null || true
-
-          # Upload Windows installer artifacts
-          for f in \
-            src-tauri/target/release/bundle/nsis/*.nsis.zip \
-            src-tauri/target/release/bundle/nsis/*.nsis.zip.sig \
-            src-tauri/target/release/bundle/msi/*.msi.zip \
-            src-tauri/target/release/bundle/msi/*.msi.zip.sig; do
-            if [ -f "$f" ]; then
-              echo "Uploading: $f"
-              gh release upload "v$VERSION" "$f" \
-                --repo solythbot/spark-updates --clobber
-            fi
-          done
-
-      - name: Upload latest.json to spark-updates
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
-        run: |
-          VERSION=$(cat src-tauri/tauri.conf.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
-
-          # tauri-action@v0 puts latest.json inside bundle directory
-          LATEST_JSON=$(find src-tauri/target/release/bundle -name "latest.json" 2>/dev/null | head -1)
-
-          if [ -n "$LATEST_JSON" ]; then
-            echo "Found latest.json at: $LATEST_JSON"
-            gh release upload "v$VERSION" "$LATEST_JSON" \
-              --repo solythbot/spark-updates --clobber
-          else
-            echo "latest.json not found. Searching all of target..."
-            find src-tauri/target -name "latest.json" 2>/dev/null | head -10 || true
-            echo "Make sure TAURI_SIGNING_PRIVATE_KEY secret is set — it is required for latest.json generation"
-          fi
-
-      - name: Zip macOS .app bundle (portable)
-        if: matrix.os == 'macos-latest'
+      - name: Verify macOS app
         shell: bash
         run: |
           set -euo pipefail
-          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/spark.app"
-          if [ ! -d "$APP_PATH" ]; then
-            echo ".app not found at: $APP_PATH"
-            ls -la "src-tauri/target/universal-apple-darwin/release/bundle/macos" || true
-            exit 1
-          fi
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "spark_${{ github.event.release.tag_name }}_macos_universal.app.zip"
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/spark.app"
+          echo "🔎 codesign verify"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "✅ Gatekeeper assessment"
+          spctl -a -vv "$APP"
 
-      - name: Upload macOS portable .app.zip
-        if: matrix.os == 'macos-latest'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: |
-            spark_${{ github.event.release.tag_name }}_macos_universal.app.zip
-
-      - name: Upload macOS update artifacts to spark-updates
-        if: matrix.os == 'macos-latest'
+      - name: Collect artifacts
         shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle"
+          mkdir -p artifacts
+
+          # Updater artifacts
+          cp "$BUNDLE/macos/spark.app.tar.gz"     artifacts/
+          cp "$BUNDLE/macos/spark.app.tar.gz.sig" artifacts/
+
+          # DMG installer
+          cp "$BUNDLE"/dmg/*.dmg artifacts/
+
+          # Portable .app.zip
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$BUNDLE/macos/spark.app" \
+            "artifacts/spark_${TAG}_macos_universal.app.zip"
+
+          echo "📦 macOS artifacts:"
+          ls -lh artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: artifacts/
+          retention-days: 1
+
+  # --- Windows x86_64 ---
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bun run tauri build
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          BUNDLE="src-tauri/target/release/bundle"
+          mkdir -p artifacts
+
+          # Updater artifacts (NSIS zip + signature)
+          cp "$BUNDLE"/nsis/*.nsis.zip     artifacts/
+          cp "$BUNDLE"/nsis/*.nsis.zip.sig artifacts/
+
+          # NSIS installer
+          cp "$BUNDLE"/nsis/*-setup.exe artifacts/
+
+          # Portable exe
+          cp src-tauri/target/release/spark.exe \
+            "artifacts/spark_${TAG}_windows_portable.exe"
+
+          echo "📦 Windows artifacts:"
+          ls -lh artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/
+          retention-days: 1
+
+  # --- Publish: gather all artifacts → single release ---
+  publish:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: ls -lhR artifacts/
+
+      - name: Generate latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          BASE_URL="https://github.com/${{ env.PUBLIC_REPO }}/releases/download/${TAG}"
+
+          # Read signatures
+          MACOS_SIG="$(cat artifacts/spark.app.tar.gz.sig)"
+          WINDOWS_NSIS_ZIP="$(basename artifacts/*-setup.nsis.zip)"
+          WINDOWS_SIG="$(cat "artifacts/${WINDOWS_NSIS_ZIP}.sig")"
+
+          # Build latest.json with jq (proper JSON escaping)
+          jq -n \
+            --arg version   "$VERSION" \
+            --arg notes     "Spark v${VERSION}" \
+            --arg pub_date  "$PUB_DATE" \
+            --arg mac_sig   "$MACOS_SIG" \
+            --arg mac_url   "${BASE_URL}/spark.app.tar.gz" \
+            --arg win_sig   "$WINDOWS_SIG" \
+            --arg win_url   "${BASE_URL}/${WINDOWS_NSIS_ZIP}" \
+            '{
+              version:  $version,
+              notes:    $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-universal": { signature: $mac_sig, url: $mac_url },
+                "darwin-aarch64":   { signature: $mac_sig, url: $mac_url },
+                "darwin-x86_64":    { signature: $mac_sig, url: $mac_url },
+                "windows-x86_64":   { signature: $win_sig, url: $win_url }
+              }
+            }' > artifacts/latest.json
+
+          echo "✅ latest.json generated:"
+          cat artifacts/latest.json
+
+      - name: Publish release to public repo
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
-          VERSION=$(cat src-tauri/tauri.conf.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+          set -euo pipefail
 
-          # Create release, ignore error if already exists
-          gh release create "v$VERSION" \
-            --repo solythbot/spark-updates \
-            --title "Spark v$VERSION" \
-            --notes "Auto-update release for v$VERSION" \
-            --draft=false 2>/dev/null || true
+          TAG="${{ github.event.release.tag_name }}"
 
-          # Upload macOS update archive and signature
-          for f in \
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz \
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig; do
-            if [ -f "$f" ]; then
-              echo "Uploading: $f"
-              gh release upload "v$VERSION" "$f" \
-                --repo solythbot/spark-updates --clobber
-            fi
-          done
+          # Delete existing release in public repo if re-running
+          gh release delete "$TAG" \
+            --repo "${{ env.PUBLIC_REPO }}" \
+            --yes --cleanup-tag 2>/dev/null || true
+
+          # Create release with all artifacts at once
+          gh release create "$TAG" artifacts/* \
+            --repo "${{ env.PUBLIC_REPO }}" \
+            --title "Spark ${TAG}" \
+            --notes "${{ github.event.release.body }}"
+
+          echo "✅ Published to ${{ env.PUBLIC_REPO }}"
+
+      - name: Upload artifacts to private repo release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: artifacts/*
