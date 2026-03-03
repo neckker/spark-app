@@ -1,5 +1,6 @@
 import Header from '@/components/Header'
 import Toaster from '@/components/Toaster'
+import Updater from '@/components/Updater'
 
 import { TokenRow } from '@/components/TokenRow'
 import EmptyTokens from '@/components/EmptyTokens'
@@ -48,6 +49,7 @@ function Layout() {
             </div>
 
             <Toaster />
+            <Updater />
         </div>
     )
 }

@@ -141,3 +141,6 @@ dist
 
 # claude
 .claude/
+
+# signing keys
+~/.tauri/
