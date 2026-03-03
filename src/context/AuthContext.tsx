@@ -6,15 +6,16 @@ import { BACKEND_URL } from '@/config/env'
 // --- types ---
 
 export type LicenseStatus =
-    | 'idle'           // начальное состояние, ещё не проверяли
-    | 'checking'       // идёт проверка
-    | 'active'         // лицензия валидна
-    | 'not_activated'  // ключ есть, но не активирован на этом устройстве
-    | 'no_license'     // ключ не введён
-    | 'expired'        // истёк срок
-    | 'revoked'        // лицензия отозвана
-    | 'device_mismatch'// активирован на другом устройстве
-    | 'error'          // сетевая или иная ошибка
+    | 'idle'              // начальное состояние, ещё не проверяли
+    | 'checking'          // идёт проверка
+    | 'active'            // лицензия валидна
+    | 'not_activated'     // ключ есть, но не активирован на этом устройстве
+    | 'no_license'        // ключ не введён
+    | 'expired'           // истёк срок
+    | 'revoked'           // лицензия отозвана
+    | 'device_mismatch'   // активирован на другом устройстве
+    | 'max_activations'   // достигнут лимит активаций
+    | 'error'             // сетевая или иная ошибка
 
 export interface AuthState {
     status: LicenseStatus
@@ -43,12 +44,13 @@ async function getDeviceId(): Promise<string> {
 /** Маппинг detail-строк от API → LicenseStatus */
 function mapApiError(detail: string): LicenseStatus {
     switch (detail) {
-        case 'license_expired':   return 'expired'
-        case 'license_revoked':   return 'revoked'
-        case 'already_activated': return 'device_mismatch'
-        case 'not_activated':     return 'not_activated'
-        case 'not_found':         return 'no_license'
-        default:                  return 'error'
+        case 'license_expired':          return 'expired'
+        case 'license_revoked':          return 'revoked'
+        case 'already_activated':        return 'device_mismatch'
+        case 'max_activations_reached':  return 'max_activations'
+        case 'not_activated':            return 'not_activated'
+        case 'not_found':                return 'no_license'
+        default:                         return 'error'
     }
 }
 

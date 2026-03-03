@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
     KeyRound, RefreshCw, ShieldAlert, ShieldOff,
-    Clock, MonitorX, AlertCircle, XCircle, Info, ExternalLink
+    Clock, MonitorX, AlertCircle, XCircle, Info, ExternalLink, Users
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,6 +66,15 @@ function getScreenCfg(status: ActiveLicenseStatus, expiresAt: number | null): Sc
                 showInput: true,
                 showRetry: false,
             }
+        case 'max_activations':
+            return {
+                icon: Users,
+                iconCls: 'text-orange-400',
+                title: 'Activation Limit Reached',
+                description: 'This license has reached its maximum number of device activations.',
+                showInput: true,
+                showRetry: false,
+            }
         case 'error':
             return {
                 icon: ShieldAlert,
@@ -121,6 +130,12 @@ const ERROR_MESSAGES: Partial<Record<LicenseStatus, {
         icon: MonitorX,
         title: 'Wrong device',
         body: 'This key is already activated on a different device.',
+    },
+    max_activations: {
+        variant: 'error',
+        icon: Users,
+        title: 'Activation limit',
+        body: 'This key has reached its maximum number of device activations.',
     },
     not_activated: {
         variant: 'info',
@@ -207,6 +222,7 @@ const REFERRAL_ERROR_LABELS: Record<string, string> = {
     not_activated:   'Your license is not activated.',
     license_expired: 'Your license has expired.',
     license_revoked: 'Your license has been revoked.',
+    trial_key:       'Referral codes are not available for trial licenses.',
 }
 
 function ReferralBlock({ deviceId }: { deviceId: string }) {
@@ -386,7 +402,7 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
     }
 
     const errorStatus: LicenseStatus | null  = attempted ? status : null
-    const showPurchaseBlock                  = (['no_license', 'not_activated', 'expired', 'revoked'] as LicenseStatus[]).includes(status)
+    const showPurchaseBlock = (['no_license', 'not_activated', 'expired', 'revoked', 'max_activations'] as LicenseStatus[]).includes(status)
 
     return (
         <div className='min-h-screen bg-main flex items-center justify-center p-6'>
