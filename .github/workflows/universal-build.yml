@@ -9,7 +9,7 @@ permissions:
 
 env:
   VITE_WS_URL: wss://sequoia.solyth.fun/hub/ws
-  VITE_BACKEND_URL: https://spark-api.solyth.fun
+  VITE_BACKEND_URL: https://sparkx-api.up.railway.app
   PUBLIC_REPO: solythbot/spark-updates
 
 jobs:
