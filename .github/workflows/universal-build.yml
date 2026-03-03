@@ -13,7 +13,7 @@ env:
   PUBLIC_REPO: solythbot/spark-updates
 
 jobs:
-  # --- macOS universal (aarch64 + x86_64) ---
+  # --- macos universal (aarch64 + x86_64) ---
   build-macos:
     runs-on: macos-latest
     steps:
@@ -99,9 +99,9 @@ jobs:
           BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle"
           mkdir -p artifacts
 
-          # Updater artifacts
-          cp "$BUNDLE/macos/spark.app.tar.gz"     artifacts/
-          cp "$BUNDLE/macos/spark.app.tar.gz.sig" artifacts/
+          # Updater artifact — rename to match tauri-action convention
+          cp "$BUNDLE/macos/spark.app.tar.gz"     "artifacts/spark_universal.app.tar.gz"
+          cp "$BUNDLE/macos/spark.app.tar.gz.sig" "artifacts/spark_universal.app.tar.gz.sig"
 
           # DMG installer
           cp "$BUNDLE"/dmg/*.dmg artifacts/
@@ -121,7 +121,7 @@ jobs:
           path: artifacts/
           retention-days: 1
 
-  # --- Windows x86_64 ---
+  # --- windows (x86_64) ---
   build-windows:
     runs-on: windows-latest
     steps:
@@ -158,12 +158,13 @@ jobs:
           BUNDLE="src-tauri/target/release/bundle"
           mkdir -p artifacts
 
-          # Updater artifacts (NSIS zip + signature)
-          cp "$BUNDLE"/nsis/*.nsis.zip     artifacts/
-          cp "$BUNDLE"/nsis/*.nsis.zip.sig artifacts/
+          # NSIS installer + updater signature
+          cp "$BUNDLE"/nsis/*-setup.exe      artifacts/
+          cp "$BUNDLE"/nsis/*-setup.exe.sig  artifacts/
 
-          # NSIS installer
-          cp "$BUNDLE"/nsis/*-setup.exe artifacts/
+          # MSI installer + updater signature
+          cp "$BUNDLE"/msi/*.msi             artifacts/
+          cp "$BUNDLE"/msi/*.msi.sig         artifacts/
 
           # Portable exe
           cp src-tauri/target/release/spark.exe \
@@ -179,7 +180,7 @@ jobs:
           path: artifacts/
           retention-days: 1
 
-  # --- Publish: gather all artifacts → single release ---
+  # --- publish: gather all artifacts → single release ---
   publish:
     needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
@@ -203,29 +204,40 @@ jobs:
           PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           BASE_URL="https://github.com/${{ env.PUBLIC_REPO }}/releases/download/${TAG}"
 
-          # Read signatures
-          MACOS_SIG="$(cat artifacts/spark.app.tar.gz.sig)"
-          WINDOWS_NSIS_ZIP="$(basename artifacts/*-setup.nsis.zip)"
-          WINDOWS_SIG="$(cat "artifacts/${WINDOWS_NSIS_ZIP}.sig")"
+          # ── macOS ──
+          MACOS_FILE="spark_universal.app.tar.gz"
+          MACOS_SIG="$(cat "artifacts/${MACOS_FILE}.sig")"
 
-          # Build latest.json with jq (proper JSON escaping)
+          # ── Windows MSI ──
+          WIN_MSI="$(basename artifacts/*.msi)"
+          WIN_MSI_SIG="$(cat "artifacts/${WIN_MSI}.sig")"
+
+          # ── Windows NSIS ──
+          WIN_NSIS="$(basename artifacts/*-setup.exe)"
+          WIN_NSIS_SIG="$(cat "artifacts/${WIN_NSIS}.sig")"
+
+          # Build latest.json — matches tauri-action format exactly
           jq -n \
-            --arg version   "$VERSION" \
-            --arg notes     "Spark v${VERSION}" \
-            --arg pub_date  "$PUB_DATE" \
-            --arg mac_sig   "$MACOS_SIG" \
-            --arg mac_url   "${BASE_URL}/spark.app.tar.gz" \
-            --arg win_sig   "$WINDOWS_SIG" \
-            --arg win_url   "${BASE_URL}/${WINDOWS_NSIS_ZIP}" \
+            --arg version    "$VERSION" \
+            --arg pub_date   "$PUB_DATE" \
+            --arg mac_sig    "$MACOS_SIG" \
+            --arg mac_url    "${BASE_URL}/${MACOS_FILE}" \
+            --arg msi_sig    "$WIN_MSI_SIG" \
+            --arg msi_url    "${BASE_URL}/${WIN_MSI}" \
+            --arg nsis_sig   "$WIN_NSIS_SIG" \
+            --arg nsis_url   "${BASE_URL}/${WIN_NSIS}" \
             '{
               version:  $version,
-              notes:    $notes,
+              notes:    "",
               pub_date: $pub_date,
               platforms: {
-                "darwin-universal": { signature: $mac_sig, url: $mac_url },
-                "darwin-aarch64":   { signature: $mac_sig, url: $mac_url },
-                "darwin-x86_64":    { signature: $mac_sig, url: $mac_url },
-                "windows-x86_64":   { signature: $win_sig, url: $win_url }
+                "darwin-aarch64":      { signature: $mac_sig,  url: $mac_url  },
+                "darwin-x86_64":       { signature: $mac_sig,  url: $mac_url  },
+                "darwin-aarch64-app":  { signature: $mac_sig,  url: $mac_url  },
+                "darwin-x86_64-app":   { signature: $mac_sig,  url: $mac_url  },
+                "windows-x86_64":      { signature: $msi_sig,  url: $msi_url  },
+                "windows-x86_64-msi":  { signature: $msi_sig,  url: $msi_url  },
+                "windows-x86_64-nsis": { signature: $nsis_sig, url: $nsis_url }
               }
             }' > artifacts/latest.json
 
