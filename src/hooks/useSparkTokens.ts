@@ -76,6 +76,7 @@ export type LastToken = {
     created_at: number
     dex_paid: boolean
     total_fee: number
+    axiom_fee: number
     volume_1h: number
     market_cap: number
     ath_mcap: number
@@ -228,6 +229,7 @@ function normalizeLastTokens(raw: unknown[]): LastToken[] {
                 created_at:  typeof r.created_at === 'number'   ? r.created_at  : 0,
                 dex_paid:    typeof r.dex_paid === 'boolean'    ? r.dex_paid    : false,
                 total_fee:   typeof r.total_fee === 'number'    ? r.total_fee   : 0,
+                axiom_fee:   typeof r.axiom_fee === 'number'    ? r.axiom_fee   : 0,
                 volume_1h:   typeof r.volume_1h === 'number'    ? r.volume_1h   : 0,
                 market_cap:  typeof r.market_cap === 'number'   ? r.market_cap  : 0,
                 ath_mcap:    typeof r.ath_mcap === 'number'     ? r.ath_mcap    : 0,
@@ -243,13 +245,16 @@ function passesFeeFilter(
     enabled: boolean,
     mode: 'total' | 'average',
     threshold: number,
+    feesTerminal: 'axiom' | 'gmgn',
 ): boolean {
     if (!enabled) return true
 
-    const withFees = lastTokens.filter(t => t.total_fee > 0)
+    const getFee = (t: LastToken) => feesTerminal === 'axiom' ? t.axiom_fee : t.total_fee
+
+    const withFees = lastTokens.filter(t => getFee(t) > 0)
     if (withFees.length === 0) return false
 
-    const sum = withFees.reduce((acc, t) => acc + t.total_fee, 0)
+    const sum = withFees.reduce((acc, t) => acc + getFee(t), 0)
 
     if (mode === 'total') return sum >= threshold
 
@@ -277,6 +282,7 @@ export function useSparkTokens() {
         feesFilterEnabled: settings.feesFilterEnabled,
         feesFilterMode: settings.feesFilterMode,
         feesFilterValue: settings.feesFilterValue,
+        feesTerminal: settings.feesTerminal,
         minCommunityMembers: settings.minCommunityMembers,
         maxCommunityMembers: settings.maxCommunityMembers,
         minCreatorFollowers: settings.minCreatorFollowers,
@@ -301,6 +307,7 @@ export function useSparkTokens() {
             feesFilterEnabled: settings.feesFilterEnabled,
             feesFilterMode: settings.feesFilterMode,
             feesFilterValue: settings.feesFilterValue,
+            feesTerminal: settings.feesTerminal,
             minCommunityMembers: settings.minCommunityMembers,
             maxCommunityMembers: settings.maxCommunityMembers,
             minCreatorFollowers: settings.minCreatorFollowers,
@@ -315,6 +322,7 @@ export function useSparkTokens() {
         settings.feesFilterEnabled,
         settings.feesFilterMode,
         settings.feesFilterValue,
+        settings.feesTerminal,
         settings.minCommunityMembers,
         settings.maxCommunityMembers,
         settings.minCreatorFollowers,
@@ -434,6 +442,7 @@ export function useSparkTokens() {
                 feesFilterEnabled,
                 feesFilterMode,
                 feesFilterValue,
+                feesTerminal,
                 minCommunityMembers,
                 maxCommunityMembers,
                 minCreatorFollowers,
@@ -453,7 +462,7 @@ export function useSparkTokens() {
             const metadata = normalizeMetadata((newpair as unknown as Record<string, unknown>).metadata)
             const lastTokens = normalizeLastTokens(last_tokens)
 
-            if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue)) {
+            if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal)) {
                 return
             }
 

@@ -4,6 +4,7 @@ import { LazyStore } from '@tauri-apps/plugin-store'
 // ─── types ────────────────────────────────────────────────────────────────────
 
 export type Terminal = 'axiom' | 'padre' | 'gmgn'
+export type FeesTerminal = 'axiom' | 'gmgn'
 export type OpenMode = 'new-tab' | 'current-tab'
 export type FeesFilterMode = 'total' | 'average'
 
@@ -21,6 +22,7 @@ export interface Settings {
     feesFilterEnabled: boolean
     feesFilterMode: FeesFilterMode
     feesFilterValue: number
+    feesTerminal: FeesTerminal
     // sound notifications
     soundEnabled: boolean
     soundVolume: number // 0-100
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
     feesFilterEnabled: false,
     feesFilterMode: 'total',
     feesFilterValue: 1,
+    feesTerminal: 'axiom',
     soundEnabled: true,
     soundVolume: 70,
     minCommunityMembers: 0,
@@ -145,6 +148,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const feesFilterEnabled  = (await store.get<boolean>('feesFilterEnabled')) ?? DEFAULT_SETTINGS.feesFilterEnabled
             const feesFilterMode     = (await store.get<FeesFilterMode>('feesFilterMode')) ?? DEFAULT_SETTINGS.feesFilterMode
             const feesFilterValue    = (await store.get<number>('feesFilterValue'))    ?? DEFAULT_SETTINGS.feesFilterValue
+            const feesTerminal       = (await store.get<FeesTerminal>('feesTerminal'))  ?? DEFAULT_SETTINGS.feesTerminal
             const soundEnabled          = (await store.get<boolean>('soundEnabled'))         ?? DEFAULT_SETTINGS.soundEnabled
             const soundVolume           = (await store.get<number>('soundVolume'))            ?? DEFAULT_SETTINGS.soundVolume
             const minCommunityMembers   = (await store.get<number>('minCommunityMembers'))   ?? DEFAULT_SETTINGS.minCommunityMembers
@@ -169,7 +173,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             setSettings({
                 devMin, devMax, migrationPct, minAvgAthMcap,
                 openInBrowser, openMode, terminal, uiScale,
-                hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue,
+                hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal,
                 soundEnabled, soundVolume,
                 minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge,
             })

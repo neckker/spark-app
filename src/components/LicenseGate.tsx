@@ -29,7 +29,7 @@ type ScreenCfg = {
     icon: React.ComponentType<{ className?: string }>
     iconCls: string
     title: string
-    description: string
+    description: React.ReactNode
     showInput: boolean
     showRetry: boolean
 }
@@ -38,13 +38,23 @@ type ScreenCfg = {
 type ActiveLicenseStatus = Exclude<LicenseStatus, 'idle' | 'checking' | 'active'>
 
 function getScreenCfg(status: ActiveLicenseStatus, expiresAt: number | null): ScreenCfg {
+    const expiryLabel = fmtExpiry(expiresAt)
+
     switch (status) {
         case 'expired':
             return {
                 icon: Clock,
                 iconCls: 'text-amber-400',
                 title: 'License Expired',
-                description: `Your license expired on ${fmtExpiry(expiresAt)}. Please renew to continue.`,
+                description: expiryLabel
+                    ? (
+                        <>
+                            Your license expired on{' '}
+                            <span className='font-semibold text-amber-200'>{expiryLabel}</span>
+                            . Please renew to continue.
+                        </>
+                    )
+                    : 'Your license has expired. Please renew to continue.',
                 showInput: true,
                 showRetry: false,
             }

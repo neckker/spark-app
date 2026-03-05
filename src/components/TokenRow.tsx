@@ -24,7 +24,7 @@ import axiomIcon  from '@/assets/terminals/axiom.svg'
 import padreIcon  from '@/assets/terminals/padre.svg'
 import gmgnIcon   from '@/assets/terminals/gmgn.svg'
 
-import type { Terminal, CreatorLabelData } from '@/context/SettingsContext'
+import type { Terminal, FeesTerminal, CreatorLabelData } from '@/context/SettingsContext'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -432,10 +432,12 @@ function LastTokenCard({
     t,
     solPrice,
     terminal,
+    feesTerminal,
 }: {
     t: LastToken
     solPrice: number | null
     terminal: Terminal
+    feesTerminal: FeesTerminal
 }) {
     const mcUsd    = solPrice && t.market_cap > 0 ? t.market_cap : null
     const athUsd   = t.ath_mcap > 0               ? t.ath_mcap             : null
@@ -505,7 +507,9 @@ function LastTokenCard({
 
                     <span className='inline-flex items-center gap-1 text-xs text-white/80'>
                         <HandCoins className='size-4' />
-                        <span className='tabular-nums text-violet-400 font-medium'>{fmtSol(t.total_fee ?? 0)} SOL</span>
+                        <span className='tabular-nums text-violet-400 font-medium'>
+                            {fmtSol((feesTerminal === 'axiom' ? t.axiom_fee : t.total_fee) ?? 0)} SOL
+                        </span>
                     </span>
 
                     <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${dexCls}`}>
@@ -764,6 +768,7 @@ export function TokenRow({
                                     t={t}
                                     solPrice={solPriceUsd}
                                     terminal={settings.terminal}
+                                    feesTerminal={settings.feesTerminal}
                                 />
                             ))}
                         </div>

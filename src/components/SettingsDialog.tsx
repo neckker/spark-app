@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import {
     useSettings,
     type Terminal,
+    type FeesTerminal,
     type OpenMode,
     type FeesFilterMode,
 } from '@/context/SettingsContext'
@@ -332,6 +333,46 @@ function FeesFilterModeToggle({
     )
 }
 
+// --- fees terminal picker ---
+
+const FEES_TERMINALS: { id: FeesTerminal; label: string; icon: string }[] = [
+    { id: 'gmgn',  label: 'GMGN',  icon: gmgnIcon  },
+    { id: 'axiom', label: 'Axiom', icon: axiomIcon },
+]
+
+function FeesTerminalPicker({
+    value,
+    onChange,
+    disabled,
+}: {
+    value: FeesTerminal
+    onChange: (t: FeesTerminal) => void
+    disabled?: boolean
+}) {
+    return (
+        <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+            {FEES_TERMINALS.map(t => (
+                <button
+                    key={t.id}
+                    type='button'
+                    disabled={disabled}
+                    onClick={() => onChange(t.id)}
+                    className={cn(
+                        'flex-1 flex items-center justify-center gap-1.5 rounded-[5px] px-3 py-1 cursor-pointer text-xs font-medium transition-colors',
+                        value === t.id
+                            ? 'bg-white/10 text-white'
+                            : 'text-muted hover:text-zinc-300',
+                        disabled && 'opacity-40 cursor-not-allowed',
+                    )}
+                >
+                    <img src={t.icon} alt={t.label} className='h-3.5 w-3.5' draggable={false} />
+                    {t.label}
+                </button>
+            ))}
+        </div>
+    )
+}
+
 // --- main tab ---
 
 type MainView = 'filters' | 'app'
@@ -352,6 +393,7 @@ function MainTab({ settings, store }: {
     const [feesFilterEnabled,    setFeesFilterEnabled]    = React.useState(settings.feesFilterEnabled)
     const [feesFilterMode,       setFeesFilterMode]       = React.useState<FeesFilterMode>(settings.feesFilterMode)
     const [feesFilterValue,      setFeesFilterValue]      = React.useState(String(settings.feesFilterValue))
+    const [feesTerminal,         setFeesTerminal]         = React.useState<FeesTerminal>(settings.feesTerminal)
     const [minCommunityMembers,  setMinCommunityMembers]  = React.useState(String(settings.minCommunityMembers))
     const [maxCommunityMembers,  setMaxCommunityMembers]  = React.useState(String(settings.maxCommunityMembers))
     const [minCreatorFollowers,  setMinCreatorFollowers]  = React.useState(String(settings.minCreatorFollowers))
@@ -383,6 +425,7 @@ function MainTab({ settings, store }: {
         setFeesFilterEnabled(settings.feesFilterEnabled)
         setFeesFilterMode(settings.feesFilterMode)
         setFeesFilterValue(String(settings.feesFilterValue))
+        setFeesTerminal(settings.feesTerminal)
         setMinCommunityMembers(String(settings.minCommunityMembers))
         setMaxCommunityMembers(String(settings.maxCommunityMembers))
         setMinCreatorFollowers(String(settings.minCreatorFollowers))
@@ -460,6 +503,7 @@ function MainTab({ settings, store }: {
                 feesFilterEnabled,
                 feesFilterMode,
                 feesFilterValue:     fees.ok ? fees.value : 1,
+                feesTerminal,
                 minCommunityMembers: comMin.ok  ? comMin.value  : 0,
                 maxCommunityMembers: comMax.ok  ? comMax.value  : 0,
                 minCreatorFollowers: creatMin.ok ? creatMin.value : 0,
@@ -496,7 +540,7 @@ function MainTab({ settings, store }: {
             return
         }
         autoSave()
-    }, [devMin, devMax, migration, minAthMcap, hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
+    }, [devMin, devMax, migration, minAthMcap, hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
 
     return (
         <div className='space-y-4'>
@@ -576,14 +620,27 @@ function MainTab({ settings, store }: {
                                 <Separator className='opacity-40' />
                                 <div className='space-y-3'>
                                     <div className='space-y-1.5'>
+                                        <Label className='text-xs text-muted'>Terminal</Label>
+                                        <FeesTerminalPicker value={feesTerminal} onChange={setFeesTerminal} />
+                                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-rose-500/8 ring-1 ring-rose-500/20'>
+                                            <Info className='h-3.5 w-3.5 text-rose-400 shrink-0' />
+                                            <p className='text-[11px] text-rose-200/70'>
+                                                Data source for token fee history analysis
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className='space-y-1.5'>
                                         <Label className='text-xs text-muted'>Calculation Mode</Label>
                                         <FeesFilterModeToggle value={feesFilterMode} onChange={setFeesFilterMode} />
-                                        <p className='text-xs text-muted'>
-                                            {feesFilterMode === 'total'
-                                                ? 'Sum of fees across all tracked tokens must exceed the threshold'
-                                                : 'Average fee per token must exceed the threshold'
-                                            }
-                                        </p>
+                                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-cyan-500/8 ring-1 ring-cyan-500/20'>
+                                            <Info className='h-3.5 w-3.5 text-cyan-400 shrink-0' />
+                                            <p className='text-[11px] text-cyan-200/70'>
+                                                {feesFilterMode === 'total'
+                                                    ? 'Sum of fees across all tracked tokens must exceed the threshold'
+                                                    : 'Average fee per token must exceed the threshold'
+                                                }
+                                            </p>
+                                        </div>
                                     </div>
                                     <div className='space-y-1.5'>
                                         <Label className='text-xs text-muted'>Threshold</Label>

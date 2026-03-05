@@ -107,6 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 { license_key: key, device_id: deviceId }
             )
             set({ status: 'active', expiresAt: data.expires_at })
+            await store.set('expires_at', data.expires_at)
+            await store.save()
         } catch (err: any) {
             const status = mapApiError(err.detail ?? '')
             set({ status, errorMessage: err.detail ?? 'Unknown error' })
@@ -146,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await store.set('license_key', trimmed)
             await store.save()
             set({ status: 'active', licenseKey: trimmed, expiresAt: data.expires_at, errorMessage: null })
+            await store.set('expires_at', data.expires_at)
             startInterval(trimmed, deviceId)
         } catch (err: any) {
             const status = mapApiError(err.detail ?? '')
@@ -166,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const logout = async (): Promise<void> => {
         stopInterval()
         await store.delete('license_key')
+        await store.delete('expires_at')
         await store.save()
         setState({
             status: 'no_license',
@@ -213,7 +217,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return
             }
 
-            set({ licenseKey: savedKey })
+            const savedExpiresAt = await store.get<number>('expires_at')
+            set({ licenseKey: savedKey, expiresAt: savedExpiresAt ?? null })
             await validate(savedKey, deviceId)
 
             // Запускаем периодическую проверку только если активна
