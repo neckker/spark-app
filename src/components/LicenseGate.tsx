@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import {
     KeyRound, RefreshCw, ShieldAlert, ShieldOff,
-    Clock, MonitorX, AlertCircle, XCircle, Info, ExternalLink, Users
+    Clock, AlertCircle, XCircle, Info, ExternalLink, Users
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { FAQModal } from '@/components/FAQModal'
-import { BACKEND_URL } from '@/config/env'
+import http from '@/lib/http'
 import { useAuth, type LicenseStatus } from '@/context/AuthContext'
 
 // --- helpers ---
@@ -64,15 +64,6 @@ function getScreenCfg(status: ActiveLicenseStatus, expiresAt: number | null): Sc
                 iconCls: 'text-red-400',
                 title: 'License Revoked',
                 description: 'Your license has been revoked. Please contact support.',
-                showInput: true,
-                showRetry: false,
-            }
-        case 'device_mismatch':
-            return {
-                icon: MonitorX,
-                iconCls: 'text-red-400',
-                title: 'Device Mismatch',
-                description: 'This license is already activated on another device.',
                 showInput: true,
                 showRetry: false,
             }
@@ -134,12 +125,6 @@ const ERROR_MESSAGES: Partial<Record<LicenseStatus, {
         icon: ShieldOff,
         title: 'License revoked',
         body: 'This key has been revoked and is no longer valid.',
-    },
-    device_mismatch: {
-        variant: 'error',
-        icon: MonitorX,
-        title: 'Wrong device',
-        body: 'This key is already activated on a different device.',
     },
     max_activations: {
         variant: 'error',
@@ -226,13 +211,13 @@ type ReferralPhase =
     | { phase: 'error'; message: string }
 
 const REFERRAL_ERROR_LABELS: Record<string, string> = {
-    code_not_found:  'This referral code does not exist.',
+    not_found:       'This referral code does not exist.',
     own_code:        "You can't use your own referral code.",
     already_used:    'You have already used a referral code.',
     not_activated:   'Your license is not activated.',
-    license_expired: 'Your license has expired.',
-    license_revoked: 'Your license has been revoked.',
-    trial_key:       'Referral codes are not available for trial licenses.',
+    is_expired:      'Your license has expired.',
+    is_revoked:      'Your license has been revoked.',
+    trial_key:       'Referral codes are not available for trial licenses.'
 }
 
 function ReferralBlock({ deviceId }: { deviceId: string }) {
@@ -251,23 +236,12 @@ function ReferralBlock({ deviceId }: { deviceId: string }) {
         setState({ phase: 'loading' })
 
         try {
-            const res  = await fetch(`${BACKEND_URL}/hub/referral/apply`, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ device_id: deviceId, code: trimmed }),
-            })
-            const data = await res.json() as { ok: boolean; detail?: string }
-
-            if (!res.ok || !data.ok) {
-                const detail  = data.detail ?? 'error'
-                const message = REFERRAL_ERROR_LABELS[detail] ?? 'Something went wrong. Please try again.'
-                setState({ phase: 'error', message })
-                return
-            }
-
+            await http.post('/hub/referrer/apply', { device_id: deviceId, code: trimmed })
             setState({ phase: 'success' })
-        } catch {
-            setState({ phase: 'error', message: 'Network error. Please try again.' })
+        } catch (err: any) {
+            const detail = err.response?.data?.detail ?? ''
+            const message = REFERRAL_ERROR_LABELS[detail] ?? 'Something went wrong. Please try again.'
+            setState({ phase: 'error', message })
         }
     }
 

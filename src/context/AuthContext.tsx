@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { LazyStore } from '@tauri-apps/plugin-store'
-import { BACKEND_URL } from '@/config/env'
+import http from '@/lib/http'
 
 // --- types ---
 
@@ -13,7 +13,6 @@ export type LicenseStatus =
     | 'no_license'        // ключ не введён
     | 'expired'           // истёк срок
     | 'revoked'           // лицензия отозвана
-    | 'device_mismatch'   // активирован на другом устройстве
     | 'max_activations'   // достигнут лимит активаций
     | 'error'             // сетевая или иная ошибка
 
@@ -44,9 +43,8 @@ async function getDeviceId(): Promise<string> {
 /** Маппинг detail-строк от API → LicenseStatus */
 function mapApiError(detail: string): LicenseStatus {
     switch (detail) {
-        case 'license_expired':          return 'expired'
-        case 'license_revoked':          return 'revoked'
-        case 'already_activated':        return 'device_mismatch'
+        case 'is_expired':               return 'expired'
+        case 'is_revoked':               return 'revoked'
         case 'max_activations_reached':  return 'max_activations'
         case 'not_activated':            return 'not_activated'
         case 'not_found':                return 'no_license'
@@ -55,17 +53,13 @@ function mapApiError(detail: string): LicenseStatus {
 }
 
 async function apiPost<T>(path: string, body: object): Promise<T> {
-    const res = await fetch(`${BACKEND_URL}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        const detail = (json as any)?.detail ?? 'error'
-        throw Object.assign(new Error(detail), { status: res.status, detail })
+    try {
+        const { data } = await http.post<T>(path, body)
+        return data
+    } catch (err: any) {
+        const detail = err.response?.data?.detail ?? 'error'
+        throw Object.assign(new Error(detail), { status: err.response?.status, detail })
     }
-    return res.json() as Promise<T>
 }
 
 // --- context ---
@@ -102,8 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const validate = async (key: string, deviceId: string): Promise<void> => {
         set({ status: 'checking', errorMessage: null })
         try {
-            const data = await apiPost<{ ok: boolean; expires_at: number }>(
-                '/hub/license/validate',
+            const data = await apiPost<{ expires_at: number }>(
+                '/hub/licenses/validate',
                 { license_key: key, device_id: deviceId }
             )
             set({ status: 'active', expiresAt: data.expires_at })
@@ -112,8 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
             const status = mapApiError(err.detail ?? '')
             set({ status, errorMessage: err.detail ?? 'Unknown error' })
-            // При ошибке валидации чистим ключ из store только если устройство сменилось или отозвана
-            if (status === 'device_mismatch' || status === 'revoked') {
+            // При ошибке валидации чистим ключ из store если отозвана
+            if (status === 'revoked') {
                 await store.delete('license_key')
                 await store.save()
                 set({ licenseKey: null })
@@ -141,8 +135,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         try {
-            const data = await apiPost<{ ok: boolean; expires_at: number }>(
-                '/hub/license/activate',
+            const data = await apiPost<{ expires_at: number }>(
+                '/hub/licenses/activate',
                 { license_key: trimmed, device_id: deviceId }
             )
             await store.set('license_key', trimmed)
