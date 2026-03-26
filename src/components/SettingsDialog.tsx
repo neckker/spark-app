@@ -26,7 +26,7 @@ import {
     type FeesFilterMode,
 } from '@/context/SettingsContext'
 import { useAuth } from '@/context/AuthContext'
-import { BACKEND_URL } from '@/config/env'
+import http from '@/lib/http'
 import {
     AlertCircle,
     Ban,
@@ -91,7 +91,6 @@ const STATUS_CONFIG = {
     checking:        { icon: RefreshCw,   color: 'text-zinc-400',    label: 'Checking…'       },
     expired:         { icon: ShieldAlert, color: 'text-amber-400',   label: 'Expired'         },
     revoked:         { icon: ShieldAlert, color: 'text-rose-400',    label: 'Revoked'         },
-    device_mismatch:  { icon: ShieldAlert, color: 'text-rose-400',    label: 'Device mismatch' },
     max_activations:  { icon: ShieldAlert, color: 'text-red-400',     label: 'Limit reached'   },
     not_activated:    { icon: ShieldAlert, color: 'text-amber-400',   label: 'Not activated'   },
     no_license:      { icon: ShieldAlert, color: 'text-zinc-400',    label: 'No license'      },
@@ -918,20 +917,18 @@ function ReferralTab() {
         if (!deviceId) return
         setLoadingStats(true)
         try {
-            const res  = await fetch(`${BACKEND_URL}/hub/referral/open-stats?device_id=${encodeURIComponent(deviceId)}`)
-            const data = await res.json() as { ok: boolean } & Partial<ReferralStats>
-            if (data.ok && data.code) {
-                setStats({
-                    code:       data.code,
-                    wallet:     data.wallet     ?? '',
-                    uses:       data.uses       ?? 0,
-                    created_at: data.created_at ?? 0,
-                    updated_at: data.updated_at ?? 0,
-                    recent:     data.recent     ?? [],
-                })
-            } else {
-                setStats(null)
-            }
+            const { data } = await http.get<{ referrer: { code: string; wallet: string; created_at: number; updated_at: number }; recent: RecentUsage[] }>(
+                '/hub/referrer/open-stats', { params: { device_id: deviceId } }
+            )
+            const r = data.referrer
+            setStats({
+                code:       r.code,
+                wallet:     r.wallet,
+                uses:       data.recent.length,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+                recent:     data.recent
+            })
         } catch {
             setStats(null)
         } finally {
@@ -962,33 +959,25 @@ function ReferralTab() {
 
         setSaving(true)
         try {
-            const res  = await fetch(`${BACKEND_URL}/hub/referral/new`, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ device_id: deviceId, code: trimmedCode, wallet: trimmedWallet }),
-            })
-            const data = await res.json() as { ok?: boolean; detail?: string } & Partial<ReferralStats>
-
-            if (!res.ok) {
-                if (data.detail === 'code_taken') setCodeError('This code is already taken.')
-                else if (data.detail === 'code_already_exists') setCodeError('You already have a referral code.')
-                else setCodeError('Something went wrong.')
-                return
-            }
-
+            const { data } = await http.post<{ code: string; wallet: string; created_at: number; updated_at: number }>(
+                '/hub/referrer/', { device_id: deviceId, code: trimmedCode, wallet: trimmedWallet }
+            )
             setStats({
-                code:       data.code       ?? trimmedCode,
-                wallet:     data.wallet     ?? trimmedWallet,
-                uses:       data.uses       ?? 0,
-                created_at: data.created_at ?? 0,
-                updated_at: data.updated_at ?? 0,
-                recent:     [],
+                code:       data.code,
+                wallet:     data.wallet,
+                uses:       0,
+                created_at: data.created_at,
+                updated_at: data.updated_at,
+                recent:     []
             })
             setCodeInput('')
             setWalletInput('')
             toast.success('Referral code created!')
-        } catch {
-            setCodeError('Network error. Please try again.')
+        } catch (err: any) {
+            const detail = err.response?.data?.detail
+            if (detail === 'is_taken') setCodeError('This code is already taken.')
+            else if (detail === 'is_exists') setCodeError('You already have a referral code.')
+            else setCodeError('Something went wrong.')
         } finally {
             setSaving(false)
         }
@@ -1016,32 +1005,24 @@ function ReferralTab() {
             if (trimmedCode)   body.new_code   = trimmedCode
             if (trimmedWallet) body.new_wallet = trimmedWallet
 
-            const res  = await fetch(`${BACKEND_URL}/hub/referral/change`, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify(body),
-            })
-            const data = await res.json() as { ok?: boolean; detail?: string } & Partial<ReferralStats>
-
-            if (!res.ok) {
-                if (data.detail === 'code_taken') setCodeError('This code is already taken.')
-                else if (data.detail === 'same_code') setCodeError('This is already your current code.')
-                else setCodeError('Something went wrong.')
-                return
-            }
-
+            const { data } = await http.put<{ code: string; wallet: string; updated_at: number }>(
+                '/hub/referrer/change', body
+            )
             setStats(prev =>
                 prev ? {
                     ...prev,
-                    code:       data.code       ?? prev.code,
-                    wallet:     data.wallet     ?? prev.wallet,
-                    updated_at: data.updated_at ?? prev.updated_at,
+                    code:       data.code,
+                    wallet:     data.wallet,
+                    updated_at: data.updated_at
                 } : null
             )
             cancelEdit()
             toast.success('Updated!')
-        } catch {
-            setCodeError('Network error. Please try again.')
+        } catch (err: any) {
+            const detail = err.response?.data?.detail
+            if (detail === 'is_taken') setCodeError('This code is already taken.')
+            else if (detail === 'same_code') setCodeError('This is already your current code.')
+            else setCodeError('Something went wrong.')
         } finally {
             setSaving(false)
         }
