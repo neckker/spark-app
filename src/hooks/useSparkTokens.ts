@@ -59,12 +59,20 @@ export type DevTokenStats = {
     total: number
     migrated: number
     rate: number
-    avg_ath_mcap: number
+}
+
+export type Funding = {
+    amount: number
+    funded_at: number
+    wallet: string | null
+    signature: string | null
+    funding_wallet: string | null
 }
 
 export type DevInfo = {
     address: string
     tokens: DevTokenStats
+    funding: Funding | null
 }
 
 export type LastToken = {
@@ -75,9 +83,8 @@ export type LastToken = {
     is_migrated: boolean
     created_at: number
     dex_paid: boolean
-    total_fee: number
-    axiom_fee: number
-    volume_1h: number
+    fees: { axiom: number; gmgn: number }
+    volume: number
     market_cap: number
     ath_mcap: number
 }
@@ -220,6 +227,7 @@ function normalizeLastTokens(raw: unknown[]): LastToken[] {
         .filter(item => item && typeof item === 'object')
         .map(item => {
             const r = item as Record<string, unknown>
+            const fees = r.fees && typeof r.fees === 'object' ? r.fees as Record<string, unknown> : {}
             return {
                 ticker:      typeof r.ticker === 'string'       ? r.ticker      : '',
                 image:       typeof r.image === 'string'        ? r.image       : '',
@@ -228,9 +236,11 @@ function normalizeLastTokens(raw: unknown[]): LastToken[] {
                 is_migrated: typeof r.is_migrated === 'boolean' ? r.is_migrated : false,
                 created_at:  typeof r.created_at === 'number'   ? r.created_at  : 0,
                 dex_paid:    typeof r.dex_paid === 'boolean'    ? r.dex_paid    : false,
-                total_fee:   typeof r.total_fee === 'number'    ? r.total_fee   : 0,
-                axiom_fee:   typeof r.axiom_fee === 'number'    ? r.axiom_fee   : 0,
-                volume_1h:   typeof r.volume_1h === 'number'    ? r.volume_1h   : 0,
+                fees: {
+                    axiom: typeof fees.axiom === 'number' ? fees.axiom : 0,
+                    gmgn:  typeof fees.gmgn === 'number'  ? fees.gmgn  : 0,
+                },
+                volume:      typeof r.volume === 'number'       ? r.volume      : 0,
                 market_cap:  typeof r.market_cap === 'number'   ? r.market_cap  : 0,
                 ath_mcap:    typeof r.ath_mcap === 'number'     ? r.ath_mcap    : 0,
             }
@@ -243,16 +253,18 @@ function normalizeLastTokens(raw: unknown[]): LastToken[] {
 function passesFeeFilter(
     lastTokens: LastToken[],
     enabled: boolean,
-    mode: 'total' | 'average',
+    mode: 'total' | 'average' | 'each',
     threshold: number,
     feesTerminal: 'axiom' | 'gmgn',
 ): boolean {
     if (!enabled) return true
 
-    const getFee = (t: LastToken) => feesTerminal === 'axiom' ? t.axiom_fee : t.total_fee
+    const getFee = (t: LastToken) => feesTerminal === 'axiom' ? t.fees.axiom : t.fees.gmgn
 
     const withFees = lastTokens.filter(t => getFee(t) > 0)
     if (withFees.length === 0) return false
+
+    if (mode === 'each') return withFees.every(t => getFee(t) >= threshold)
 
     const sum = withFees.reduce((acc, t) => acc + getFee(t), 0)
 
@@ -264,7 +276,7 @@ function passesFeeFilter(
 // --- hook ---
 
 export function useSparkTokens() {
-    const { settings, isBlacklisted, isCreatorBlacklisted } = useSettings()
+    const { settings, isBlacklisted, isCreatorBlacklisted, isDevWhitelisted, isCreatorWhitelisted } = useSettings()
     const playSound = useNotificationSound(settings.soundEnabled, settings.soundVolume)
 
     // --- refs for latest settings (avoid stale closure in ws.onmessage) ---
@@ -276,20 +288,28 @@ export function useSparkTokens() {
     const filtersRef = useRef({
         devMin: settings.devMin,
         devMax: settings.devMax,
+        devHoldEnabled: settings.devHoldEnabled,
         migrationPct: settings.migrationPct,
-        minAvgAthMcap: settings.minAvgAthMcap,
+        migrationEnabled: settings.migrationEnabled,
         hideMayhem: settings.hideMayhem,
         feesFilterEnabled: settings.feesFilterEnabled,
         feesFilterMode: settings.feesFilterMode,
         feesFilterValue: settings.feesFilterValue,
         feesTerminal: settings.feesTerminal,
+        communityEnabled: settings.communityEnabled,
         minCommunityMembers: settings.minCommunityMembers,
         maxCommunityMembers: settings.maxCommunityMembers,
         minCreatorFollowers: settings.minCreatorFollowers,
         maxCommunityAge: settings.maxCommunityAge,
+        fundingEnabled: settings.fundingEnabled,
+        minFundingAmount: settings.minFundingAmount,
+        maxFundingAmount: settings.maxFundingAmount,
+        maxFundingAge: settings.maxFundingAge,
     })
     const isBlacklistedRef = useRef(isBlacklisted)
     const isCreatorBlacklistedRef = useRef(isCreatorBlacklisted)
+    const isDevWhitelistedRef = useRef(isDevWhitelisted)
+    const isCreatorWhitelistedRef = useRef(isCreatorWhitelisted)
 
     useEffect(() => { playSoundRef.current = playSound }, [playSound])
     useEffect(() => { openModeRef.current = settings.openMode }, [settings.openMode])
@@ -297,36 +317,50 @@ export function useSparkTokens() {
     useEffect(() => { terminalRef.current = settings.terminal }, [settings.terminal])
     useEffect(() => { isBlacklistedRef.current = isBlacklisted }, [isBlacklisted])
     useEffect(() => { isCreatorBlacklistedRef.current = isCreatorBlacklisted }, [isCreatorBlacklisted])
+    useEffect(() => { isDevWhitelistedRef.current = isDevWhitelisted }, [isDevWhitelisted])
+    useEffect(() => { isCreatorWhitelistedRef.current = isCreatorWhitelisted }, [isCreatorWhitelisted])
     useEffect(() => {
         filtersRef.current = {
             devMin: settings.devMin,
             devMax: settings.devMax,
+            devHoldEnabled: settings.devHoldEnabled,
             migrationPct: settings.migrationPct,
-            minAvgAthMcap: settings.minAvgAthMcap,
+            migrationEnabled: settings.migrationEnabled,
             hideMayhem: settings.hideMayhem,
             feesFilterEnabled: settings.feesFilterEnabled,
             feesFilterMode: settings.feesFilterMode,
             feesFilterValue: settings.feesFilterValue,
             feesTerminal: settings.feesTerminal,
+            communityEnabled: settings.communityEnabled,
             minCommunityMembers: settings.minCommunityMembers,
             maxCommunityMembers: settings.maxCommunityMembers,
             minCreatorFollowers: settings.minCreatorFollowers,
             maxCommunityAge: settings.maxCommunityAge,
+            fundingEnabled: settings.fundingEnabled,
+            minFundingAmount: settings.minFundingAmount,
+            maxFundingAmount: settings.maxFundingAmount,
+            maxFundingAge: settings.maxFundingAge,
         }
     }, [
         settings.devMin,
         settings.devMax,
+        settings.devHoldEnabled,
         settings.migrationPct,
-        settings.minAvgAthMcap,
+        settings.migrationEnabled,
         settings.hideMayhem,
         settings.feesFilterEnabled,
         settings.feesFilterMode,
         settings.feesFilterValue,
         settings.feesTerminal,
+        settings.communityEnabled,
         settings.minCommunityMembers,
         settings.maxCommunityMembers,
         settings.minCreatorFollowers,
         settings.maxCommunityAge,
+        settings.fundingEnabled,
+        settings.minFundingAmount,
+        settings.maxFundingAmount,
+        settings.maxFundingAge,
     ])
 
     // notify server when filter thresholds change
@@ -335,13 +369,12 @@ export function useSparkTokens() {
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
                 type: 'config',
-                migration_pct: settings.migrationPct,
-                min_dev_hold: settings.devMin,
-                max_dev_hold: settings.devMax,
-                min_avg_ath_mcap: settings.minAvgAthMcap,
+                migration_pct: settings.migrationEnabled ? settings.migrationPct : 5,
+                min_dev_hold: settings.devHoldEnabled ? settings.devMin : 0.1,
+                max_dev_hold: settings.devHoldEnabled ? settings.devMax : 100,
             }))
         }
-    }, [settings.migrationPct, settings.devMin, settings.devMax, settings.minAvgAthMcap])
+    }, [settings.migrationPct, settings.migrationEnabled, settings.devMin, settings.devMax, settings.devHoldEnabled])
 
     // --- internal refs ---
 
@@ -383,13 +416,12 @@ export function useSparkTokens() {
 
         ws.onopen = () => {
             setStatus('open')
-            const { migrationPct, devMin, devMax, minAvgAthMcap } = filtersRef.current
+            const { migrationPct, migrationEnabled, devMin, devMax, devHoldEnabled } = filtersRef.current
             ws.send(JSON.stringify({
                 type: 'config',
-                migration_pct: migrationPct,
-                min_dev_hold: devMin,
-                max_dev_hold: devMax,
-                min_avg_ath_mcap: minAvgAthMcap,
+                migration_pct: migrationEnabled ? migrationPct : 5,
+                min_dev_hold: devHoldEnabled ? devMin : 0.1,
+                max_dev_hold: devHoldEnabled ? devMax : 100,
             }))
         }
         ws.onerror = () => setStatus('error')
@@ -433,56 +465,88 @@ export function useSparkTokens() {
                 setSolPriceUsd(sol_price)
             }
 
-            const {
-                devMin,
-                devMax,
-                migrationPct,
-                minAvgAthMcap,
-                hideMayhem,
-                feesFilterEnabled,
-                feesFilterMode,
-                feesFilterValue,
-                feesTerminal,
-                minCommunityMembers,
-                maxCommunityMembers,
-                minCreatorFollowers,
-                maxCommunityAge,
-            } = filtersRef.current
-
-            // --- filters ---
-
-            if (newpair.devhold < devMin) return
-            if (newpair.devhold > devMax) return
-            if (dev.tokens.rate < migrationPct) return
-            if (dev.tokens.avg_ath_mcap < minAvgAthMcap) return
-            if (isBlacklistedRef.current(dev.address)) return
-            if (hideMayhem && newpair.is_mayhem_mode) return
-
-            // normalize metadata from server payload
+            // normalize metadata & last tokens early (needed for whitelist display too)
             const metadata = normalizeMetadata((newpair as unknown as Record<string, unknown>).metadata)
             const lastTokens = normalizeLastTokens(last_tokens)
 
-            if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal)) {
-                return
+            const creator = metadata?.xcommunity?.creator
+            const creatorScreenName = creator?.screen_name?.toLowerCase()
+            const whitelisted = isDevWhitelistedRef.current(dev.address)
+                || (creatorScreenName != null && isCreatorWhitelistedRef.current(creatorScreenName))
+
+            if (!whitelisted) {
+                const {
+                    devMin,
+                    devMax,
+                    devHoldEnabled,
+                    migrationPct,
+                    migrationEnabled,
+                    hideMayhem,
+                    feesFilterEnabled,
+                    feesFilterMode,
+                    feesFilterValue,
+                    feesTerminal,
+                    communityEnabled,
+                    minCommunityMembers,
+                    maxCommunityMembers,
+                    minCreatorFollowers,
+                    maxCommunityAge,
+                    fundingEnabled,
+                    minFundingAmount,
+                    maxFundingAmount,
+                    maxFundingAge,
+                } = filtersRef.current
+
+                // --- filters ---
+
+                if (devHoldEnabled) {
+                    if (newpair.devhold < devMin) return
+                    if (newpair.devhold > devMax) return
+                }
+                if (migrationEnabled) {
+                    if (dev.tokens.rate < migrationPct) return
+                }
+                if (isBlacklistedRef.current(dev.address)) return
+                if (hideMayhem && newpair.is_mayhem_mode) return
+
+                if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal)) {
+                    return
+                }
+
+                // funding filters
+                if (fundingEnabled) {
+                    if (minFundingAmount > 0) {
+                        if (!dev.funding || dev.funding.amount < minFundingAmount) return
+                    }
+                    if (maxFundingAmount > 0) {
+                        if (!dev.funding || dev.funding.amount > maxFundingAmount) return
+                    }
+                    if (maxFundingAge > 0 && dev.funding && dev.funding.funded_at > 0) {
+                        const ageMs = Date.now() - dev.funding.funded_at
+                        if (ageMs > maxFundingAge * 3_600_000) return
+                    }
+                }
+
+                // community / creator filters (only apply when community is attached)
+                if (metadata?.xcommunity) {
+                    if (communityEnabled) {
+                        if (minCommunityMembers > 0 && metadata.xcommunity.member_count < minCommunityMembers) return
+                        if (maxCommunityMembers > 0 && metadata.xcommunity.member_count > maxCommunityMembers) return
+                        if (minCreatorFollowers > 0 && metadata.xcommunity.creator) {
+                            if (metadata.xcommunity.creator.followers_count < minCreatorFollowers) return
+                        }
+                        if (maxCommunityAge > 0 && metadata.xcommunity.created_at > 0) {
+                            const ageMs = Date.now() - metadata.xcommunity.created_at
+                            if (ageMs > maxCommunityAge * 3_600_000) return
+                        }
+                    }
+                    if (metadata.xcommunity.creator?.screen_name) {
+                        if (isCreatorBlacklistedRef.current(metadata.xcommunity.creator.screen_name)) return
+                    }
+                }
             }
 
-            // community / creator filters (only apply when community is attached)
-            if (metadata?.xcommunity) {
-                if (minCommunityMembers > 0 && metadata.xcommunity.member_count < minCommunityMembers) return
-                if (maxCommunityMembers > 0 && metadata.xcommunity.member_count > maxCommunityMembers) return
-                if (minCreatorFollowers > 0 && metadata.xcommunity.creator) {
-                    if (metadata.xcommunity.creator.followers_count < minCreatorFollowers) return
-                }
-                if (maxCommunityAge > 0 && metadata.xcommunity.created_at > 0) {
-                    const ageMs = Date.now() - metadata.xcommunity.created_at
-                    if (ageMs > maxCommunityAge * 3_600_000) return
-                }
-                if (metadata.xcommunity.creator) {
-                    if (isCreatorBlacklistedRef.current(metadata.xcommunity.creator.id)) return
-                }
-            }
-
-            // --- passed all filters ---
+            // --- passed all filters (or whitelisted) ---
 
             playSoundRef.current()
             totalProcessedRef.current += 1

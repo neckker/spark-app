@@ -6,27 +6,34 @@ import { LazyStore } from '@tauri-apps/plugin-store'
 export type Terminal = 'axiom' | 'padre' | 'gmgn'
 export type FeesTerminal = 'axiom' | 'gmgn'
 export type OpenMode = 'new-tab' | 'current-tab'
-export type FeesFilterMode = 'total' | 'average'
+export type FeesFilterMode = 'total' | 'average' | 'each'
 
 export interface Settings {
     devMin: number
     devMax: number
+    devHoldEnabled: boolean
     migrationPct: number
-    minAvgAthMcap: number
+    migrationEnabled: boolean
     openInBrowser: boolean
     terminal: Terminal
     uiScale: number
     openMode: OpenMode
-    // new filters
+    // token filters
     hideMayhem: boolean
     feesFilterEnabled: boolean
     feesFilterMode: FeesFilterMode
     feesFilterValue: number
     feesTerminal: FeesTerminal
+    // funding filters
+    fundingEnabled: boolean
+    minFundingAmount: number  // SOL, 0 = disabled
+    maxFundingAmount: number  // SOL, 0 = disabled
+    maxFundingAge: number     // hours, 0 = disabled
     // sound notifications
     soundEnabled: boolean
     soundVolume: number // 0-100
     // community filters
+    communityEnabled: boolean
     minCommunityMembers: number
     maxCommunityMembers: number
     minCreatorFollowers: number
@@ -36,8 +43,9 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
     devMin: 0.1,
     devMax: 77,
+    devHoldEnabled: true,
     migrationPct: 15,
-    minAvgAthMcap: 0,
+    migrationEnabled: true,
     openInBrowser: false,
     openMode: 'new-tab',
     terminal: 'axiom',
@@ -47,8 +55,13 @@ export const DEFAULT_SETTINGS: Settings = {
     feesFilterMode: 'total',
     feesFilterValue: 1,
     feesTerminal: 'axiom',
+    fundingEnabled: false,
+    minFundingAmount: 0,
+    maxFundingAmount: 0,
+    maxFundingAge: 0,
     soundEnabled: true,
     soundVolume: 70,
+    communityEnabled: false,
     minCommunityMembers: 0,
     maxCommunityMembers: 0,
     minCreatorFollowers: 0,
@@ -82,10 +95,10 @@ interface SettingsCtx {
     setWalletLabel: (address: string, label: string) => Promise<void>
     removeWalletLabel: (address: string) => Promise<void>
 
-    // creator labels (community creators)
+    // creator labels (community creators, keyed by screenName)
     creatorLabels: CreatorLabels
-    setCreatorLabel: (creatorId: string, label: string, color: string, screenName: string) => Promise<void>
-    removeCreatorLabel: (creatorId: string) => Promise<void>
+    setCreatorLabel: (screenName: string, label: string, color: string) => Promise<void>
+    removeCreatorLabel: (screenName: string) => Promise<void>
 
     // wallet blacklist
     blacklist: Set<string>
@@ -93,11 +106,23 @@ interface SettingsCtx {
     removeFromBlacklist: (address: string) => Promise<void>
     isBlacklisted: (address: string) => boolean
 
-    // creator blacklist
+    // creator blacklist (keyed by screenName)
     creatorBlacklist: CreatorBlacklist
-    addCreatorToBlacklist: (id: string, screenName: string) => Promise<void>
-    removeCreatorFromBlacklist: (id: string) => Promise<void>
-    isCreatorBlacklisted: (id: string) => boolean
+    addCreatorToBlacklist: (screenName: string) => Promise<void>
+    removeCreatorFromBlacklist: (screenName: string) => Promise<void>
+    isCreatorBlacklisted: (screenName: string) => boolean
+
+    // dev whitelist (wallets)
+    devWhitelist: Set<string>
+    addToDevWhitelist: (address: string) => Promise<void>
+    removeFromDevWhitelist: (address: string) => Promise<void>
+    isDevWhitelisted: (address: string) => boolean
+
+    // creator whitelist (keyed by screenName)
+    creatorWhitelist: CreatorBlacklist  // reuse same shape: screenName → displayName
+    addCreatorToWhitelist: (screenName: string) => Promise<void>
+    removeCreatorFromWhitelist: (screenName: string) => Promise<void>
+    isCreatorWhitelisted: (screenName: string) => boolean
 }
 
 // ─── context ─────────────────────────────────────────────────────────────────
@@ -111,8 +136,8 @@ const SettingsContext = createContext<SettingsCtx>({
     setWalletLabel: async () => {},
     removeWalletLabel: async () => {},
     creatorLabels: {},
-    setCreatorLabel: async () => {},
-    removeCreatorLabel: async () => {},
+    setCreatorLabel: async () => { },
+    removeCreatorLabel: async () => { },
     blacklist: new Set(),
     addToBlacklist: async () => {},
     removeFromBlacklist: async () => {},
@@ -121,6 +146,14 @@ const SettingsContext = createContext<SettingsCtx>({
     addCreatorToBlacklist: async () => {},
     removeCreatorFromBlacklist: async () => {},
     isCreatorBlacklisted: () => false,
+    devWhitelist: new Set(),
+    addToDevWhitelist: async () => {},
+    removeFromDevWhitelist: async () => {},
+    isDevWhitelisted: () => false,
+    creatorWhitelist: {},
+    addCreatorToWhitelist: async () => {},
+    removeCreatorFromWhitelist: async () => {},
+    isCreatorWhitelisted: () => false,
 })
 
 // ─── provider ────────────────────────────────────────────────────────────────
@@ -132,14 +165,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const [creatorLabels, setCreatorLabels] = useState<CreatorLabels>({})
     const [blacklist, setBlacklist]         = useState<Set<string>>(new Set())
     const [creatorBlacklist, setCreatorBlacklist] = useState<CreatorBlacklist>({})
+    const [devWhitelist, setDevWhitelist]   = useState<Set<string>>(new Set())
+    const [creatorWhitelist, setCreatorWhitelist] = useState<CreatorBlacklist>({})
     const [ready, setReady]                 = useState(false)
 
     useEffect(() => {
         async function load() {
             const devMin             = (await store.get<number>('devMin'))             ?? DEFAULT_SETTINGS.devMin
             const devMax             = (await store.get<number>('devMax'))             ?? DEFAULT_SETTINGS.devMax
+            const devHoldEnabled     = (await store.get<boolean>('devHoldEnabled'))    ?? DEFAULT_SETTINGS.devHoldEnabled
             const migrationPct       = (await store.get<number>('migrationPct'))       ?? DEFAULT_SETTINGS.migrationPct
-            const minAvgAthMcap      = (await store.get<number>('minAvgAthMcap'))     ?? DEFAULT_SETTINGS.minAvgAthMcap
+            const migrationEnabled   = (await store.get<boolean>('migrationEnabled'))  ?? DEFAULT_SETTINGS.migrationEnabled
             const openInBrowser      = (await store.get<boolean>('openInBrowser'))     ?? DEFAULT_SETTINGS.openInBrowser
             const openMode           = (await store.get<OpenMode>('openMode'))         ?? DEFAULT_SETTINGS.openMode
             const terminal           = (await store.get<Terminal>('terminal'))         ?? DEFAULT_SETTINGS.terminal
@@ -149,8 +185,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const feesFilterMode     = (await store.get<FeesFilterMode>('feesFilterMode')) ?? DEFAULT_SETTINGS.feesFilterMode
             const feesFilterValue    = (await store.get<number>('feesFilterValue'))    ?? DEFAULT_SETTINGS.feesFilterValue
             const feesTerminal       = (await store.get<FeesTerminal>('feesTerminal'))  ?? DEFAULT_SETTINGS.feesTerminal
+            const fundingEnabled        = (await store.get<boolean>('fundingEnabled'))       ?? DEFAULT_SETTINGS.fundingEnabled
+            const minFundingAmount      = (await store.get<number>('minFundingAmount'))      ?? DEFAULT_SETTINGS.minFundingAmount
+            const maxFundingAmount      = (await store.get<number>('maxFundingAmount'))      ?? DEFAULT_SETTINGS.maxFundingAmount
+            const maxFundingAge         = (await store.get<number>('maxFundingAge'))         ?? DEFAULT_SETTINGS.maxFundingAge
             const soundEnabled          = (await store.get<boolean>('soundEnabled'))         ?? DEFAULT_SETTINGS.soundEnabled
             const soundVolume           = (await store.get<number>('soundVolume'))            ?? DEFAULT_SETTINGS.soundVolume
+            const communityEnabled      = (await store.get<boolean>('communityEnabled'))     ?? DEFAULT_SETTINGS.communityEnabled
             const minCommunityMembers   = (await store.get<number>('minCommunityMembers'))   ?? DEFAULT_SETTINGS.minCommunityMembers
             const maxCommunityMembers   = (await store.get<number>('maxCommunityMembers'))   ?? DEFAULT_SETTINGS.maxCommunityMembers
             const minCreatorFollowers   = (await store.get<number>('minCreatorFollowers'))   ?? DEFAULT_SETTINGS.minCreatorFollowers
@@ -159,6 +200,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const rawCreatorLabels   = (await store.get<Record<string, unknown>>('creatorLabels')) ?? {}
             const rawBlacklist       = (await store.get<string[]>('blacklist'))          ?? []
             const rawCreatorBlacklist = (await store.get<CreatorBlacklist>('creatorBlacklist')) ?? {}
+            const rawDevWhitelist    = (await store.get<string[]>('devWhitelist'))       ?? []
+            const rawCreatorWhitelist = (await store.get<CreatorBlacklist>('creatorWhitelist')) ?? {}
 
             // Migrate old string-format creator labels to new object format
             const migratedCreatorLabels: CreatorLabels = {}
@@ -171,16 +214,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             }
 
             setSettings({
-                devMin, devMax, migrationPct, minAvgAthMcap,
+                devMin, devMax, devHoldEnabled, migrationPct, migrationEnabled,
                 openInBrowser, openMode, terminal, uiScale,
                 hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal,
+                fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge,
                 soundEnabled, soundVolume,
-                minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge,
+                communityEnabled, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge,
             })
             setWalletLabels(rawLabels)
             setCreatorLabels(migratedCreatorLabels)
             setBlacklist(new Set(rawBlacklist))
             setCreatorBlacklist(rawCreatorBlacklist)
+            setDevWhitelist(new Set(rawDevWhitelist))
+            setCreatorWhitelist(rawCreatorWhitelist)
             setReady(true)
         }
         load().catch(() => setReady(true))
@@ -195,7 +241,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
     const setWalletLabel = async (address: string, label: string) => {
         const trimmed = label.trim().slice(0, 10)
-        const next = { ...walletLabels, [address]: trimmed }
+        const { [address]: _, ...rest } = walletLabels
+        const next = { [address]: trimmed, ...rest }
         setWalletLabels(next)
         await store.set('walletLabels', next)
         await store.save()
@@ -209,25 +256,27 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         await store.save()
     }
 
-    const setCreatorLabel = async (creatorId: string, label: string, color: string, screenName: string) => {
+    const setCreatorLabel = async (screenName: string, label: string, color: string) => {
+        const key = screenName.toLowerCase()
         const trimmed = label.trim().slice(0, 16)
         const data: CreatorLabelData = { label: trimmed, color, screenName }
-        const next = { ...creatorLabels, [creatorId]: data }
+        const { [key]: _, ...rest } = creatorLabels
+        const next = { [key]: data, ...rest }
         setCreatorLabels(next)
         await store.set('creatorLabels', next)
         await store.save()
     }
 
-    const removeCreatorLabel = async (creatorId: string) => {
+    const removeCreatorLabel = async (screenName: string) => {
         const next = { ...creatorLabels }
-        delete next[creatorId]
+        delete next[screenName]
         setCreatorLabels(next)
         await store.set('creatorLabels', next)
         await store.save()
     }
 
     const addToBlacklist = async (address: string) => {
-        const next = new Set(blacklist).add(address)
+        const next = new Set([address, ...blacklist])
         setBlacklist(next)
         await store.set('blacklist', [...next])
         await store.save()
@@ -246,24 +295,68 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         [blacklist]
     )
 
-    const addCreatorToBlacklist = async (id: string, screenName: string) => {
-        const next = { ...creatorBlacklist, [id]: screenName }
+    const addCreatorToBlacklist = async (screenName: string) => {
+        const key = screenName.toLowerCase()
+        const { [key]: _, ...rest } = creatorBlacklist
+        const next = { [key]: screenName, ...rest }
         setCreatorBlacklist(next)
         await store.set('creatorBlacklist', next)
         await store.save()
     }
 
-    const removeCreatorFromBlacklist = async (id: string) => {
+    const removeCreatorFromBlacklist = async (screenName: string) => {
         const next = { ...creatorBlacklist }
-        delete next[id]
+        delete next[screenName]
         setCreatorBlacklist(next)
         await store.set('creatorBlacklist', next)
         await store.save()
     }
 
     const isCreatorBlacklisted = useCallback(
-        (id: string) => id in creatorBlacklist,
+        (screenName: string) => screenName.toLowerCase() in creatorBlacklist,
         [creatorBlacklist]
+    )
+
+    const addToDevWhitelist = async (address: string) => {
+        const next = new Set([address, ...devWhitelist])
+        setDevWhitelist(next)
+        await store.set('devWhitelist', [...next])
+        await store.save()
+    }
+
+    const removeFromDevWhitelist = async (address: string) => {
+        const next = new Set(devWhitelist)
+        next.delete(address)
+        setDevWhitelist(next)
+        await store.set('devWhitelist', [...next])
+        await store.save()
+    }
+
+    const isDevWhitelisted = useCallback(
+        (address: string) => devWhitelist.has(address),
+        [devWhitelist]
+    )
+
+    const addCreatorToWhitelist = async (screenName: string) => {
+        const key = screenName.toLowerCase()
+        const { [key]: _, ...rest } = creatorWhitelist
+        const next = { [key]: screenName, ...rest }
+        setCreatorWhitelist(next)
+        await store.set('creatorWhitelist', next)
+        await store.save()
+    }
+
+    const removeCreatorFromWhitelist = async (screenName: string) => {
+        const next = { ...creatorWhitelist }
+        delete next[screenName]
+        setCreatorWhitelist(next)
+        await store.set('creatorWhitelist', next)
+        await store.save()
+    }
+
+    const isCreatorWhitelisted = useCallback(
+        (screenName: string) => screenName.toLowerCase() in creatorWhitelist,
+        [creatorWhitelist]
     )
 
     return (
@@ -273,6 +366,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             creatorLabels, setCreatorLabel, removeCreatorLabel,
             blacklist, addToBlacklist, removeFromBlacklist, isBlacklisted,
             creatorBlacklist, addCreatorToBlacklist, removeCreatorFromBlacklist, isCreatorBlacklisted,
+            devWhitelist, addToDevWhitelist, removeFromDevWhitelist, isDevWhitelisted,
+            creatorWhitelist, addCreatorToWhitelist, removeCreatorFromWhitelist, isCreatorWhitelisted,
         }}>
             {children}
         </SettingsContext.Provider>

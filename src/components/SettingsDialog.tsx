@@ -50,9 +50,9 @@ import gmgnIcon from '@/assets/terminals/gmgn.svg'
 
 // --- types ---
 
-type Tab = 'main' | 'referral' | 'labels' | 'blacklist'
+type Tab = 'main' | 'referral' | 'labels' | 'blacklist' | 'whitelist'
 
-type FieldKey = 'devMin' | 'devMax' | 'migrationPct' | 'minAvgAthMcap' | 'feesFilterValue' | 'minCommunityMembers' | 'maxCommunityMembers' | 'minCreatorFollowers' | 'maxCommunityAge'
+type FieldKey = 'devMin' | 'devMax' | 'migrationPct' | 'feesFilterValue' | 'minFundingAmount' | 'maxFundingAmount' | 'maxFundingAge' | 'minCommunityMembers' | 'maxCommunityMembers' | 'minCreatorFollowers' | 'maxCommunityAge'
 type Errors = Partial<Record<FieldKey, string>>
 
 type RecentUsage = {
@@ -78,6 +78,7 @@ const TABS: { id: Tab; label: string }[] = [
     { id: 'referral',  label: 'Referral'  },
     { id: 'labels',    label: 'Labels'    },
     { id: 'blacklist', label: 'Blacklist' },
+    { id: 'whitelist', label: 'Whitelist' },
 ]
 
 const TERMINALS: { id: Terminal; label: string; icon: string; url: string }[] = [
@@ -309,9 +310,10 @@ function FeesFilterModeToggle({
     onChange: (v: FeesFilterMode) => void
     disabled?: boolean
 }) {
+    const labels: Record<FeesFilterMode, string> = { total: 'Total', average: 'Average', each: 'Each' }
     return (
         <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
-            {(['total', 'average'] as FeesFilterMode[]).map(mode => (
+            {(['total', 'average', 'each'] as FeesFilterMode[]).map(mode => (
                 <button
                     key={mode}
                     type='button'
@@ -325,7 +327,7 @@ function FeesFilterModeToggle({
                         disabled && 'opacity-40 cursor-not-allowed',
                     )}
                 >
-                    {mode === 'total' ? 'Total' : 'Average'}
+                    {labels[mode]}
                 </button>
             ))}
         </div>
@@ -387,12 +389,18 @@ function MainTab({ settings, store }: {
     const [devMin,               setDevMin]               = React.useState(String(settings.devMin))
     const [devMax,               setDevMax]               = React.useState(String(settings.devMax))
     const [migration,            setMigration]            = React.useState(String(settings.migrationPct))
-    const [minAthMcap,           setMinAthMcap]           = React.useState(String(settings.minAvgAthMcap))
     const [hideMayhem,           setHideMayhem]           = React.useState(settings.hideMayhem)
     const [feesFilterEnabled,    setFeesFilterEnabled]    = React.useState(settings.feesFilterEnabled)
     const [feesFilterMode,       setFeesFilterMode]       = React.useState<FeesFilterMode>(settings.feesFilterMode)
     const [feesFilterValue,      setFeesFilterValue]      = React.useState(String(settings.feesFilterValue))
     const [feesTerminal,         setFeesTerminal]         = React.useState<FeesTerminal>(settings.feesTerminal)
+    const [devHoldEnabled,       setDevHoldEnabled]       = React.useState(settings.devHoldEnabled)
+    const [migrationEnabled,     setMigrationEnabled]     = React.useState(settings.migrationEnabled)
+    const [fundingEnabled,       setFundingEnabled]       = React.useState(settings.fundingEnabled)
+    const [minFundingAmount,     setMinFundingAmount]     = React.useState(String(settings.minFundingAmount))
+    const [maxFundingAmount,     setMaxFundingAmount]     = React.useState(String(settings.maxFundingAmount))
+    const [maxFundingAge,        setMaxFundingAge]        = React.useState(String(settings.maxFundingAge))
+    const [communityEnabled,     setCommunityEnabled]     = React.useState(settings.communityEnabled)
     const [minCommunityMembers,  setMinCommunityMembers]  = React.useState(String(settings.minCommunityMembers))
     const [maxCommunityMembers,  setMaxCommunityMembers]  = React.useState(String(settings.maxCommunityMembers))
     const [minCreatorFollowers,  setMinCreatorFollowers]  = React.useState(String(settings.minCreatorFollowers))
@@ -419,12 +427,18 @@ function MainTab({ settings, store }: {
         setDevMin(String(settings.devMin))
         setDevMax(String(settings.devMax))
         setMigration(String(settings.migrationPct))
-        setMinAthMcap(String(settings.minAvgAthMcap))
         setHideMayhem(settings.hideMayhem)
         setFeesFilterEnabled(settings.feesFilterEnabled)
         setFeesFilterMode(settings.feesFilterMode)
         setFeesFilterValue(String(settings.feesFilterValue))
         setFeesTerminal(settings.feesTerminal)
+        setDevHoldEnabled(settings.devHoldEnabled)
+        setMigrationEnabled(settings.migrationEnabled)
+        setFundingEnabled(settings.fundingEnabled)
+        setMinFundingAmount(String(settings.minFundingAmount))
+        setMaxFundingAmount(String(settings.maxFundingAmount))
+        setMaxFundingAge(String(settings.maxFundingAge))
+        setCommunityEnabled(settings.communityEnabled)
         setMinCommunityMembers(String(settings.minCommunityMembers))
         setMaxCommunityMembers(String(settings.maxCommunityMembers))
         setMinCreatorFollowers(String(settings.minCreatorFollowers))
@@ -455,14 +469,6 @@ function MainTab({ settings, store }: {
             else migValue = Math.min(100, n)
         }
 
-        const athCleaned = normalize(minAthMcap)
-        let athValue = 0
-        if (athCleaned) {
-            const n = Number(athCleaned)
-            if (!Number.isFinite(n) || n < 0) next.minAvgAthMcap = 'err'
-            else athValue = n
-        }
-
         if (!min.ok) next.devMin = 'err'
         else if (min.value < 0.1) next.devMin = 'err'
         if (!max.ok) next.devMax = 'err'
@@ -471,6 +477,17 @@ function MainTab({ settings, store }: {
         if (min.ok && max.ok && !next.devMin && min.value > max.value) {
             next.devMin = 'err'
             next.devMax = 'err'
+        }
+
+        const fundMin = parseSol(minFundingAmount)
+        const fundMax = parseSol(maxFundingAmount)
+        const fundAge = parsePositiveNum(maxFundingAge)
+        if (!fundMin.ok) next.minFundingAmount = 'err'
+        if (!fundMax.ok) next.maxFundingAmount = 'err'
+        if (!fundAge.ok) next.maxFundingAge = 'err'
+        if (fundMin.ok && fundMax.ok && fundMin.value > 0 && fundMax.value > 0 && fundMin.value > fundMax.value) {
+            next.minFundingAmount = 'err'
+            next.maxFundingAmount = 'err'
         }
 
         const comMin  = parsePositiveNum(minCommunityMembers)
@@ -496,13 +513,19 @@ function MainTab({ settings, store }: {
             values: {
                 devMin:              min.ok ? Math.max(0.1, min.value) : 0.1,
                 devMax:              max.ok ? max.value : 77,
+                devHoldEnabled,
                 migrationPct:        migValue,
-                minAvgAthMcap:       athValue,
+                migrationEnabled,
                 hideMayhem,
                 feesFilterEnabled,
                 feesFilterMode,
                 feesFilterValue:     fees.ok ? fees.value : 1,
                 feesTerminal,
+                fundingEnabled,
+                minFundingAmount:    fundMin.ok ? fundMin.value : 0,
+                maxFundingAmount:    fundMax.ok ? fundMax.value : 0,
+                maxFundingAge:       fundAge.ok ? fundAge.value : 0,
+                communityEnabled,
                 minCommunityMembers: comMin.ok  ? comMin.value  : 0,
                 maxCommunityMembers: comMax.ok  ? comMax.value  : 0,
                 minCreatorFollowers: creatMin.ok ? creatMin.value : 0,
@@ -539,7 +562,7 @@ function MainTab({ settings, store }: {
             return
         }
         autoSave()
-    }, [devMin, devMax, migration, minAthMcap, hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
+    }, [devMin, devMax, devHoldEnabled, migration, migrationEnabled, hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge, communityEnabled, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
 
     return (
         <div className='space-y-4'>
@@ -555,7 +578,7 @@ function MainTab({ settings, store }: {
                                 view === v ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
                             )}
                         >
-                            {v === 'filters' ? 'Filters' : 'App Settings'}
+                            {v === 'filters' ? 'Filters' : 'Application'}
                         </button>
                     ))}
                 </div>
@@ -566,33 +589,81 @@ function MainTab({ settings, store }: {
                     {/* ── DEV FILTERS ── */}
                     <SectionLabel>Dev Filters</SectionLabel>
 
-                    <div className='space-y-2'>
-                        <Label>Dev Holdings %</Label>
-                        <div className='grid grid-cols-2 gap-3'>
-                            <SuffixInput value={devMin} onChange={setDevMin} suffix='MIN' placeholder='0.1' error={!!errors.devMin} />
-                            <SuffixInput value={devMax} onChange={setDevMax} suffix='MAX' placeholder='77'  error={!!errors.devMax} />
-                        </div>
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                        <RowSwitch
+                            label='Dev Holdings'
+                            description='Filter by developer token holding percentage'
+                            checked={devHoldEnabled}
+                            onCheckedChange={setDevHoldEnabled}
+                        />
+                        {devHoldEnabled && (
+                            <>
+                                <Separator className='opacity-40' />
+                                <div className='space-y-2'>
+                                    <Label className='text-xs text-muted'>Holdings %</Label>
+                                    <div className='grid grid-cols-2 gap-3'>
+                                        <SuffixInput value={devMin} onChange={setDevMin} suffix='MIN' placeholder='0.1' error={!!errors.devMin} />
+                                        <SuffixInput value={devMax} onChange={setDevMax} suffix='MAX' placeholder='77'  error={!!errors.devMax} />
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
 
-                    <div className='space-y-2'>
-                        <div className='grid grid-cols-2 gap-3'>
-                            <div className='space-y-1.5'>
-                                <Label>Migration Rate %</Label>
-                                <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='15' error={!!errors.migrationPct} />
-                            </div>
-                            <div className='space-y-1.5'>
-                                <Label>Average ATH MC</Label>
-                                <SuffixInput value={minAthMcap} onChange={setMinAthMcap} suffix='MIN' placeholder='0' error={!!errors.minAvgAthMcap} />
-                            </div>
-                        </div>
-                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-sky-500/8 ring-1 ring-sky-500/20'>
-                            <Info className='h-3.5 w-3.5 text-sky-400 shrink-0' />
-                            <p className='text-[11px] text-sky-200/70'>
-                                Migration min <span className='font-semibold text-white'>5%</span>
-                                {' · '}ATH MC in <span className='font-semibold text-white'>USD</span>
-                                {' · '}<span className='font-semibold text-white'>0</span> = disabled
-                            </p>
-                        </div>
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                        <RowSwitch
+                            label='Migration Rate'
+                            description='Filter by token migration success rate'
+                            checked={migrationEnabled}
+                            onCheckedChange={setMigrationEnabled}
+                        />
+                        {migrationEnabled && (
+                            <>
+                                <Separator className='opacity-40' />
+                                <div className='space-y-2'>
+                                    <Label className='text-xs text-muted'>Rate %</Label>
+                                    <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='15' error={!!errors.migrationPct} />
+                                    <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-sky-500/8 ring-1 ring-sky-500/20'>
+                                        <Info className='h-3.5 w-3.5 text-sky-400 shrink-0' />
+                                        <p className='text-[11px] text-sky-200/70'>
+                                            Minimum <span className='font-semibold text-white'>5%</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                        <RowSwitch
+                            label='Funding Filter'
+                            description='Filter by dev wallet funding amount and age'
+                            checked={fundingEnabled}
+                            onCheckedChange={setFundingEnabled}
+                        />
+                        {fundingEnabled && (
+                            <>
+                                <Separator className='opacity-40' />
+                                <div className='space-y-2'>
+                                    <Label className='text-xs text-muted'>Amount</Label>
+                                    <div className='grid grid-cols-2 gap-3'>
+                                        <SuffixInput value={minFundingAmount} onChange={setMinFundingAmount} suffix='MIN' placeholder='0' error={!!errors.minFundingAmount} />
+                                        <SuffixInput value={maxFundingAmount} onChange={setMaxFundingAmount} suffix='MAX' placeholder='0' error={!!errors.maxFundingAmount} />
+                                    </div>
+                                </div>
+                                <div className='space-y-2'>
+                                    <Label className='text-xs text-muted'>Age</Label>
+                                    <SuffixInput value={maxFundingAge} onChange={setMaxFundingAge} suffix='HR' placeholder='0' error={!!errors.maxFundingAge} />
+                                    <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-amber-500/8 ring-1 ring-amber-500/20'>
+                                        <Info className='h-3.5 w-3.5 text-amber-400 shrink-0' />
+                                        <p className='text-[11px] text-amber-200/70'>
+                                            <span className='font-semibold text-white'>SOL</span> amount and age in <span className='font-semibold text-white'>hours</span>
+                                            {' · '}<span className='font-semibold text-white'>0</span> = disabled
+                                        </p>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {/* ── TOKEN FILTERS ── */}
@@ -636,7 +707,9 @@ function MainTab({ settings, store }: {
                                             <p className='text-[11px] text-cyan-200/70'>
                                                 {feesFilterMode === 'total'
                                                     ? 'Sum of fees across all tracked tokens must exceed the threshold'
-                                                    : 'Average fee per token must exceed the threshold'
+                                                    : feesFilterMode === 'average'
+                                                    ? 'Average fee per token must exceed the threshold'
+                                                    : 'Each token must individually exceed the threshold'
                                                 }
                                             </p>
                                         </div>
@@ -653,38 +726,55 @@ function MainTab({ settings, store }: {
                     {/* ── X/TWITTER COMMUNITY ── */}
                     <SectionLabel>X/Twitter Community</SectionLabel>
 
-                    <div className='space-y-2'>
-                        <Label>Community Members</Label>
-                        <div className='grid grid-cols-2 gap-3'>
-                            <SuffixInput value={minCommunityMembers} onChange={setMinCommunityMembers} suffix='MIN' placeholder='0' error={!!errors.minCommunityMembers} />
-                            <SuffixInput value={maxCommunityMembers} onChange={setMaxCommunityMembers} suffix='MAX' placeholder='0' error={!!errors.maxCommunityMembers} />
-                        </div>
-                    </div>
-
-                    <div className='space-y-2'>
-                        <div className='grid grid-cols-2 gap-3'>
-                            <div className='space-y-1.5'>
-                                <Label>Creator Followers</Label>
-                                <SuffixInput value={minCreatorFollowers} onChange={setMinCreatorFollowers} suffix='MIN' placeholder='0' error={!!errors.minCreatorFollowers} />
-                            </div>
-                            <div className='space-y-1.5'>
-                                <Label>Max Community Age</Label>
-                                <SuffixInput value={maxCommunityAge} onChange={setMaxCommunityAge} suffix='HR' placeholder='0' error={!!errors.maxCommunityAge} />
-                            </div>
-                        </div>
-                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-violet-500/8 ring-1 ring-violet-500/20'>
-                            <Info className='h-3.5 w-3.5 text-violet-400 shrink-0' />
-                            <p className='text-[11px] text-violet-200/70'>
-                                Only for tokens with <span className='font-semibold text-white'>X Community</span>
-                                {' · '}<span className='font-semibold text-white'>0</span> = disabled
-                            </p>
-                        </div>
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
+                        <RowSwitch
+                            label='Community Filter'
+                            description='Filter by X/Twitter community stats'
+                            checked={communityEnabled}
+                            onCheckedChange={setCommunityEnabled}
+                        />
+                        {communityEnabled && (
+                            <>
+                                <Separator className='opacity-40' />
+                                <div className='space-y-2'>
+                                    <Label className='text-xs text-muted'>Community Members</Label>
+                                    <div className='grid grid-cols-2 gap-3'>
+                                        <SuffixInput value={minCommunityMembers} onChange={setMinCommunityMembers} suffix='MIN' placeholder='0' error={!!errors.minCommunityMembers} />
+                                        <SuffixInput value={maxCommunityMembers} onChange={setMaxCommunityMembers} suffix='MAX' placeholder='0' error={!!errors.maxCommunityMembers} />
+                                    </div>
+                                </div>
+                                <div className='space-y-2'>
+                                    <div className='grid grid-cols-2 gap-3'>
+                                        <div className='space-y-1.5'>
+                                            <Label className='text-xs text-muted'>Creator Followers</Label>
+                                            <SuffixInput value={minCreatorFollowers} onChange={setMinCreatorFollowers} suffix='MIN' placeholder='0' error={!!errors.minCreatorFollowers} />
+                                        </div>
+                                        <div className='space-y-1.5'>
+                                            <Label className='text-xs text-muted'>Max Community Age</Label>
+                                            <SuffixInput value={maxCommunityAge} onChange={setMaxCommunityAge} suffix='HR' placeholder='0' error={!!errors.maxCommunityAge} />
+                                        </div>
+                                    </div>
+                                    <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-violet-500/8 ring-1 ring-violet-500/20'>
+                                        <Info className='h-3.5 w-3.5 text-violet-400 shrink-0' />
+                                        <p className='text-[11px] text-violet-200/70'>
+                                            Only for tokens with <span className='font-semibold text-white'>X Community</span>
+                                            {' · '}<span className='font-semibold text-white'>0</span> = disabled
+                                        </p>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
 
             {view === 'app' && (
                 <div className='space-y-4 px-1 py-2'>
+                    <div className='space-y-1.5'>
+                        <Label className='text-xs text-muted'>Terminal</Label>
+                        <TerminalPicker value={terminal} onChange={setTerminal} />
+                    </div>
+
                     <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
                         <RowSwitch
                             label='Auto-Open Token'
@@ -725,11 +815,6 @@ function MainTab({ settings, store }: {
                                             </button>
                                         </div>
                                     )}
-                                </div>
-                                <Separator className='opacity-40' />
-                                <div className='space-y-1.5'>
-                                    <Label className='text-xs text-muted'>Terminal</Label>
-                                    <TerminalPicker value={terminal} onChange={setTerminal} />
                                 </div>
                             </>
                         )}
@@ -1274,22 +1359,63 @@ function ReferralTab() {
 type LabelsView = 'wallets' | 'creators'
 
 function LabelsTab() {
-    const { walletLabels, removeWalletLabel, creatorLabels, removeCreatorLabel } = useSettings()
+    const { walletLabels, setWalletLabel, removeWalletLabel, creatorLabels, setCreatorLabel, removeCreatorLabel } = useSettings()
     const [view, setView] = React.useState<LabelsView>('wallets')
+    const [search, setSearch] = React.useState('')
 
-    const walletEntries  = Object.entries(walletLabels)
-    const creatorEntries = Object.entries(creatorLabels)
+    // manual add state — wallets
+    const [walletAddrInput, setWalletAddrInput] = React.useState('')
+    const [walletLabelInput, setWalletLabelInput] = React.useState('')
+    const [walletError, setWalletError] = React.useState<string | null>(null)
+
+    // manual add state — creators
+    const [creatorNameInput, setCreatorNameInput] = React.useState('')
+    const [creatorLabelInput, setCreatorLabelInput] = React.useState('')
+    const [creatorError, setCreatorError] = React.useState<string | null>(null)
+
+    const walletEntries  = Object.entries(walletLabels).filter(([addr]) =>
+        !search || addr.toLowerCase().includes(search.toLowerCase())
+    )
+    const creatorEntries = Object.entries(creatorLabels).filter(([, data]) =>
+        !search || (data.screenName && data.screenName.toLowerCase().includes(search.toLowerCase()))
+    )
+
+    const handleAddWalletLabel = () => {
+        const addr = walletAddrInput.trim()
+        const label = walletLabelInput.trim()
+        if (!addr) { setWalletError('Please enter a wallet address'); return }
+        if (!SOLANA_WALLET_RE.test(addr)) { setWalletError('Invalid Solana wallet address'); return }
+        if (!label) { setWalletError('Please enter a label'); return }
+        void setWalletLabel(addr, label)
+        setWalletAddrInput('')
+        setWalletLabelInput('')
+        setWalletError(null)
+        toast.success('Wallet label added')
+    }
+
+    const handleAddCreatorLabel = () => {
+        const name = creatorNameInput.trim().replace(/^@/, '')
+        const label = creatorLabelInput.trim()
+        if (!name) { setCreatorError('Please enter a screen name'); return }
+        if (name.length > 30) { setCreatorError('Invalid screen name'); return }
+        if (!label) { setCreatorError('Please enter a label'); return }
+        void setCreatorLabel(name, label, '#7dd3fc')
+        setCreatorNameInput('')
+        setCreatorLabelInput('')
+        setCreatorError(null)
+        toast.success('Creator label added')
+    }
 
     return (
-        <div className='space-y-4'>
+        <div className='space-y-2'>
             {/* toggle */}
-            <div className='px-1'>
+            <div className='px-1 pb-1'>
             <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
                 {(['wallets', 'creators'] as LabelsView[]).map(v => (
                     <button
                         key={v}
                         type='button'
-                        onClick={() => setView(v)}
+                        onClick={() => { setView(v); setSearch(''); setWalletError(null); setCreatorError(null) }}
                         className={cn(
                             'flex-1 rounded-[5px] px-3 py-1.5 text-xs cursor-pointer font-medium transition-colors',
                             view === v ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
@@ -1303,66 +1429,133 @@ function LabelsTab() {
 
             {/* wallet labels */}
             {view === 'wallets' && (
-                walletEntries.length === 0 ? (
-                    <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
-                        <Tag className='h-8 w-8 opacity-30' />
-                        <span className='text-sm'>No Wallet Labels Yet</span>
-                        <span className='text-xs opacity-60'>Label a dev wallet from any token card</span>
+                <div className='space-y-2'>
+                    <div className='px-1 space-y-1.5'>
+                        <div className='flex gap-2'>
+                            <Input
+                                value={walletAddrInput}
+                                onChange={e => { setWalletAddrInput(e.target.value); setWalletError(null) }}
+                                placeholder='Wallet address…'
+                                className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAddWalletLabel() }}
+                            />
+                            <Input
+                                value={walletLabelInput}
+                                onChange={e => setWalletLabelInput(e.target.value)}
+                                placeholder='Label…'
+                                className='bg-white/5 border-white/10 text-sm w-24'
+                                maxLength={10}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAddWalletLabel() }}
+                            />
+                            <Button onClick={handleAddWalletLabel} className='shrink-0'>Add</Button>
+                        </div>
+                        {walletError && <FieldError message={walletError} />}
                     </div>
-                ) : (
-                    <div className='space-y-1.5 p-1'>
-                        {walletEntries.map(([addr, label]) => (
-                            <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                                <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
-                                <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
-                                <button
-                                    type='button'
-                                    title='Remove Label'
-                                    onClick={() => { void removeWalletLabel(addr); toast.success('Label removed') }}
-                                    className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
-                                >
-                                    <X className='h-3.5 w-3.5' />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )
+
+                    {Object.keys(walletLabels).length > 0 && (
+                        <div className='px-1'>
+                            <Input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder='Search by wallet address…'
+                                className='bg-white/5 border-white/10 text-sm'
+                            />
+                        </div>
+                    )}
+
+                    {walletEntries.length === 0 ? (
+                        <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                            <Tag className='h-8 w-8 opacity-30' />
+                            <span className='text-sm'>{search ? 'No matches' : 'No Wallet Labels Yet'}</span>
+                            {!search && <span className='text-xs opacity-60'>Add a label above or from any token card</span>}
+                        </div>
+                    ) : (
+                        <div className='space-y-1.5 px-1'>
+                            {walletEntries.map(([addr, label]) => (
+                                <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                    <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+                                    <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
+                                    <button
+                                        type='button'
+                                        title='Remove Label'
+                                        onClick={() => { void removeWalletLabel(addr); toast.success('Label removed') }}
+                                        className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                    >
+                                        <X className='h-3.5 w-3.5' />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             )}
 
             {/* creator labels */}
             {view === 'creators' && (
-                creatorEntries.length === 0 ? (
-                    <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
-                        <Users className='h-8 w-8 opacity-30' />
-                        <span className='text-sm'>No Creator Labels Yet</span>
-                        <span className='text-xs opacity-60'>Label a community creator from the hover card</span>
+                <div className='space-y-2'>
+                    <div className='px-1 space-y-1.5'>
+                        <div className='flex gap-2'>
+                            <Input
+                                value={creatorNameInput}
+                                onChange={e => { setCreatorNameInput(e.target.value); setCreatorError(null) }}
+                                placeholder='@screen_name'
+                                className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAddCreatorLabel() }}
+                            />
+                            <Input
+                                value={creatorLabelInput}
+                                onChange={e => setCreatorLabelInput(e.target.value)}
+                                placeholder='Label…'
+                                className='bg-white/5 border-white/10 text-sm w-24'
+                                maxLength={16}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAddCreatorLabel() }}
+                            />
+                            <Button onClick={handleAddCreatorLabel} className='shrink-0'>Add</Button>
+                        </div>
+                        {creatorError && <FieldError message={creatorError} />}
                     </div>
-                ) : (
-                    <div className='space-y-1.5 p-1'>
-                        {creatorEntries.map(([creatorId, data]) => (
-                            <div key={creatorId} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                                <span
-                                    className='font-medium text-xs uppercase shrink-0'
-                                    style={{ color: data.color }}
-                                >
-                                    {data.label}
-                                </span>
-                                {data.screenName && (
-                                    <span className='text-muted text-xs shrink-0'>@{data.screenName}</span>
-                                )}
-                                <span className='text-muted font-mono text-xs truncate flex-1'>{creatorId}</span>
-                                <button
-                                    type='button'
-                                    title='Remove Label'
-                                    onClick={() => { void removeCreatorLabel(creatorId); toast.success('Creator label removed') }}
-                                    className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
-                                >
-                                    <X className='h-3.5 w-3.5' />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )
+
+                    {Object.keys(creatorLabels).length > 0 && (
+                        <div className='px-1'>
+                            <Input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder='Search by creator name…'
+                                className='bg-white/5 border-white/10 text-sm'
+                            />
+                        </div>
+                    )}
+
+                    {creatorEntries.length === 0 ? (
+                        <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                            <Users className='h-8 w-8 opacity-30' />
+                            <span className='text-sm'>{search ? 'No matches' : 'No Creator Labels Yet'}</span>
+                            {!search && <span className='text-xs opacity-60'>Add a label above or from the hover card</span>}
+                        </div>
+                    ) : (
+                        <div className='space-y-1.5 px-1'>
+                            {creatorEntries.map(([screenName, data]) => (
+                                <div key={screenName} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                    <span
+                                        className='font-medium text-xs uppercase shrink-0'
+                                        style={{ color: data.color }}
+                                    >
+                                        {data.label}
+                                    </span>
+                                    <span className='text-muted text-xs truncate flex-1'>@{data.screenName || screenName}</span>
+                                    <button
+                                        type='button'
+                                        title='Remove Label'
+                                        onClick={() => { void removeCreatorLabel(screenName); toast.success('Creator label removed') }}
+                                        className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                    >
+                                        <X className='h-3.5 w-3.5' />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             )}
         </div>
     )
@@ -1373,22 +1566,61 @@ function LabelsTab() {
 type BlacklistView = 'wallets' | 'creators'
 
 function BlacklistTab() {
-    const { blacklist, walletLabels, removeFromBlacklist, creatorBlacklist, removeCreatorFromBlacklist } = useSettings()
+    const {
+        blacklist, walletLabels, addToBlacklist, removeFromBlacklist,
+        creatorBlacklist, addCreatorToBlacklist, removeCreatorFromBlacklist,
+    } = useSettings()
     const [view, setView] = React.useState<BlacklistView>('wallets')
+    const [search, setSearch] = React.useState('')
 
-    const walletEntries = [...blacklist]
-    const creatorEntries = Object.entries(creatorBlacklist)
+    // manual add state — wallets
+    const [walletInput, setWalletInput] = React.useState('')
+    const [walletError, setWalletError] = React.useState<string | null>(null)
+
+    // manual add state — creators
+    const [creatorInput, setCreatorInput] = React.useState('')
+    const [creatorError, setCreatorError] = React.useState<string | null>(null)
+
+    const walletEntries = [...blacklist].filter(addr =>
+        !search || addr.toLowerCase().includes(search.toLowerCase())
+    )
+    const creatorEntries = Object.entries(creatorBlacklist).filter(([, screenName]) =>
+        !search || (screenName && screenName.toLowerCase().includes(search.toLowerCase()))
+    )
+
+    const handleAddWallet = () => {
+        const trimmed = walletInput.trim()
+        if (!trimmed) { setWalletError('Please enter a wallet address'); return }
+        if (!SOLANA_WALLET_RE.test(trimmed)) { setWalletError('Invalid Solana wallet address'); return }
+        if (blacklist.has(trimmed)) { setWalletError('Already in blacklist'); return }
+        void addToBlacklist(trimmed)
+        setWalletInput('')
+        setWalletError(null)
+        toast.success('Added to blacklist')
+    }
+
+    const handleAddCreator = () => {
+        const trimmed = creatorInput.trim().replace(/^@/, '')
+        if (!trimmed) { setCreatorError('Please enter a screen name'); return }
+        if (trimmed.length > 30) { setCreatorError('Invalid screen name'); return }
+        const key = trimmed.toLowerCase()
+        if (key in creatorBlacklist) { setCreatorError('Already in blacklist'); return }
+        void addCreatorToBlacklist(trimmed)
+        setCreatorInput('')
+        setCreatorError(null)
+        toast.success('Creator added to blacklist')
+    }
 
     return (
-        <div className='space-y-4'>
+        <div className='space-y-2'>
             {/* toggle */}
-            <div className='px-1'>
+            <div className='px-1 pb-1'>
             <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
                 {(['wallets', 'creators'] as BlacklistView[]).map(v => (
                     <button
                         key={v}
                         type='button'
-                        onClick={() => setView(v)}
+                        onClick={() => { setView(v); setSearch(''); setWalletError(null); setCreatorError(null) }}
                         className={cn(
                             'flex-1 rounded-[5px] px-3 py-1.5 text-xs cursor-pointer font-medium transition-colors',
                             view === v ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
@@ -1402,65 +1634,315 @@ function BlacklistTab() {
 
             {/* wallet blacklist */}
             {view === 'wallets' && (
-                walletEntries.length === 0 ? (
-                    <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
-                        <Ban className='h-8 w-8 opacity-30' />
-                        <span className='text-sm'>No Blocked Wallets</span>
-                        <span className='text-xs opacity-60'>Ban a dev wallet from any token card</span>
+                <div className='space-y-2'>
+                    <div className='px-1 space-y-1.5'>
+                        <div className='flex gap-2'>
+                            <Input
+                                value={walletInput}
+                                onChange={e => { setWalletInput(e.target.value); setWalletError(null) }}
+                                placeholder='Wallet address…'
+                                className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAddWallet() }}
+                            />
+                            <Button onClick={handleAddWallet} className='shrink-0'>Add</Button>
+                        </div>
+                        {walletError && <FieldError message={walletError} />}
                     </div>
-                ) : (
-                    <div className='space-y-1.5 p-1'>
-                        {walletEntries.map(addr => {
-                            const label = walletLabels[addr]
-                            return (
-                                <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                                    {label && (
-                                        <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
-                                    )}
-                                    <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
+
+                    {blacklist.size > 0 && (
+                        <div className='px-1'>
+                            <Input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder='Search by wallet address…'
+                                className='bg-white/5 border-white/10 text-sm'
+                            />
+                        </div>
+                    )}
+
+                    {walletEntries.length === 0 ? (
+                        <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                            <Ban className='h-8 w-8 opacity-30' />
+                            <span className='text-sm'>{search ? 'No matches' : 'No Blocked Wallets'}</span>
+                            {!search && <span className='text-xs opacity-60'>Add a wallet above or ban from any token card</span>}
+                        </div>
+                    ) : (
+                        <div className='space-y-1.5 px-1'>
+                            {walletEntries.map(addr => {
+                                const label = walletLabels[addr]
+                                return (
+                                    <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                        {label && (
+                                            <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+                                        )}
+                                        <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
+                                        <button
+                                            type='button'
+                                            title='Remove from blacklist'
+                                            onClick={() => { void removeFromBlacklist(addr); toast.success('Removed from blacklist') }}
+                                            className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                        >
+                                            <X className='h-3.5 w-3.5' />
+                                        </button>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* creator blacklist */}
+            {view === 'creators' && (
+                <div className='space-y-2'>
+                    <div className='px-1 space-y-1.5'>
+                        <div className='flex gap-2'>
+                            <Input
+                                value={creatorInput}
+                                onChange={e => { setCreatorInput(e.target.value); setCreatorError(null) }}
+                                placeholder='@screen_name'
+                                className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAddCreator() }}
+                            />
+                            <Button onClick={handleAddCreator} className='shrink-0'>Add</Button>
+                        </div>
+                        {creatorError && <FieldError message={creatorError} />}
+                    </div>
+
+                    {Object.keys(creatorBlacklist).length > 0 && (
+                        <div className='px-1'>
+                            <Input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder='Search by creator name…'
+                                className='bg-white/5 border-white/10 text-sm'
+                            />
+                        </div>
+                    )}
+
+                    {creatorEntries.length === 0 ? (
+                        <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                            <Ban className='h-8 w-8 opacity-30' />
+                            <span className='text-sm'>{search ? 'No matches' : 'No Blocked Creators'}</span>
+                            {!search && <span className='text-xs opacity-60'>Add a creator above or block from the hover card</span>}
+                        </div>
+                    ) : (
+                        <div className='space-y-1.5 px-1'>
+                            {creatorEntries.map(([key, screenName]) => (
+                                <div key={key} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                    <span className='text-rose-300 font-medium text-xs shrink-0'>@{screenName || key}</span>
+                                    <span className='flex-1' />
                                     <button
                                         type='button'
-                                        title='Remove from blacklist'
-                                        onClick={() => { void removeFromBlacklist(addr); toast.success('Removed from blacklist') }}
+                                        title='Unblock creator'
+                                        onClick={() => { void removeCreatorFromBlacklist(key); toast.success('Creator unblocked') }}
                                         className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
                                     >
                                         <X className='h-3.5 w-3.5' />
                                     </button>
                                 </div>
-                            )
-                        })}
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
+
+// --- whitelist tab ---
+
+type WhitelistView = 'wallets' | 'creators'
+
+function WhitelistTab() {
+    const {
+        walletLabels,
+        devWhitelist, addToDevWhitelist, removeFromDevWhitelist,
+        creatorWhitelist, addCreatorToWhitelist, removeCreatorFromWhitelist,
+    } = useSettings()
+    const [view, setView] = React.useState<WhitelistView>('wallets')
+    const [search, setSearch] = React.useState('')
+    const [walletInput, setWalletInput] = React.useState('')
+    const [walletError, setWalletError] = React.useState<string | null>(null)
+    const [creatorInput, setCreatorInput] = React.useState('')
+    const [creatorError, setCreatorError] = React.useState<string | null>(null)
+
+    const walletEntries = [...devWhitelist].filter(addr =>
+        !search || addr.toLowerCase().includes(search.toLowerCase())
+    )
+    const creatorEntries = Object.entries(creatorWhitelist).filter(([, screenName]) =>
+        !search || (screenName && screenName.toLowerCase().includes(search.toLowerCase()))
+    )
+
+    const handleAddWallet = () => {
+        const trimmed = walletInput.trim()
+        if (!trimmed) { setWalletError('Please enter a wallet address'); return }
+        if (!SOLANA_WALLET_RE.test(trimmed)) { setWalletError('Invalid Solana wallet address'); return }
+        if (devWhitelist.has(trimmed)) { setWalletError('Already in whitelist'); return }
+        void addToDevWhitelist(trimmed)
+        setWalletInput('')
+        setWalletError(null)
+        toast.success('Added to whitelist')
+    }
+
+    const handleAddCreator = () => {
+        const trimmed = creatorInput.trim().replace(/^@/, '')
+        if (!trimmed) { setCreatorError('Please enter a screen name'); return }
+        if (trimmed.length < 1 || trimmed.length > 30) { setCreatorError('Invalid screen name'); return }
+        const key = trimmed.toLowerCase()
+        if (key in creatorWhitelist) { setCreatorError('Already in whitelist'); return }
+        void addCreatorToWhitelist(trimmed)
+        setCreatorInput('')
+        setCreatorError(null)
+        toast.success('Creator added to whitelist')
+    }
+
+    return (
+        <div className='space-y-2'>
+            {/* toggle */}
+            <div className='px-1 pb-1'>
+            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+                {(['wallets', 'creators'] as WhitelistView[]).map(v => (
+                    <button
+                        key={v}
+                        type='button'
+                        onClick={() => { setView(v); setSearch('') }}
+                        className={cn(
+                            'flex-1 rounded-[5px] px-3 py-1.5 text-xs cursor-pointer font-medium transition-colors',
+                            view === v ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
+                        )}
+                    >
+                        {v === 'wallets' ? 'Wallets' : 'Creators'}
+                    </button>
+                ))}
+            </div>
+            </div>
+
+            {/* wallets whitelist */}
+            {view === 'wallets' && (
+                <div className='space-y-2'>
+                    <div className='px-1 space-y-1.5'>
+                        <div className='flex gap-2'>
+                            <Input
+                                value={walletInput}
+                                onChange={e => { setWalletInput(e.target.value); setWalletError(null) }}
+                                placeholder='Wallet address…'
+                                className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAddWallet() }}
+                            />
+                            <Button onClick={handleAddWallet} className='shrink-0'>Add</Button>
+                        </div>
+                        {walletError && <FieldError message={walletError} />}
+                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-emerald-500/8 ring-1 ring-emerald-500/20'>
+                            <Info className='h-3.5 w-3.5 text-emerald-400 shrink-0' />
+                            <p className='text-[11px] text-emerald-200/70'>
+                                Whitelisted wallets bypass all filters
+                            </p>
+                        </div>
                     </div>
-                )
+
+                    {devWhitelist.size > 0 && (
+                        <div className='px-1'>
+                            <Input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder='Search by wallet address…'
+                                className='bg-white/5 border-white/10 text-sm'
+                            />
+                        </div>
+                    )}
+
+                    {walletEntries.length === 0 ? (
+                        <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                            <ShieldCheck className='h-8 w-8 opacity-30' />
+                            <span className='text-sm'>{search ? 'No matches' : 'No Whitelisted Wallets'}</span>
+                            {!search && <span className='text-xs opacity-60'>Add a wallet to bypass all filters</span>}
+                        </div>
+                    ) : (
+                        <div className='space-y-1.5 p-1'>
+                            {walletEntries.map(addr => {
+                                const label = walletLabels[addr]
+                                return (
+                                    <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                        {label && (
+                                            <span className='text-emerald-300 font-medium text-xs uppercase shrink-0'>{label}</span>
+                                        )}
+                                        <span className='text-muted font-mono text-xs truncate flex-1'>{addr}</span>
+                                        <button
+                                            type='button'
+                                            title='Remove from whitelist'
+                                            onClick={() => { void removeFromDevWhitelist(addr); toast.success('Removed from whitelist') }}
+                                            className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                        >
+                                            <X className='h-3.5 w-3.5' />
+                                        </button>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
             )}
 
-            {/* creator blacklist */}
+            {/* creators whitelist */}
             {view === 'creators' && (
-                creatorEntries.length === 0 ? (
-                    <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
-                        <Ban className='h-8 w-8 opacity-30' />
-                        <span className='text-sm'>No Blocked Creators</span>
-                        <span className='text-xs opacity-60'>Block a creator from the community hover card</span>
+                <div className='space-y-2'>
+                    <div className='px-1 space-y-1.5'>
+                        <div className='flex gap-2'>
+                            <Input
+                                value={creatorInput}
+                                onChange={e => { setCreatorInput(e.target.value); setCreatorError(null) }}
+                                placeholder='@screen_name'
+                                className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAddCreator() }}
+                            />
+                            <Button onClick={handleAddCreator} className='shrink-0'>Add</Button>
+                        </div>
+                        {creatorError && <FieldError message={creatorError} />}
+                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-emerald-500/8 ring-1 ring-emerald-500/20'>
+                            <Info className='h-3.5 w-3.5 text-emerald-400 shrink-0' />
+                            <p className='text-[11px] text-emerald-200/70'>
+                                Whitelisted creators bypass all filters
+                            </p>
+                        </div>
                     </div>
-                ) : (
-                    <div className='space-y-1.5 p-1'>
-                        {creatorEntries.map(([id, screenName]) => (
-                            <div key={id} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
-                                {screenName && (
-                                    <span className='text-rose-300 font-medium text-xs shrink-0'>@{screenName}</span>
-                                )}
-                                <span className='text-muted font-mono text-xs truncate flex-1'>{id}</span>
-                                <button
-                                    type='button'
-                                    title='Unblock creator'
-                                    onClick={() => { void removeCreatorFromBlacklist(id); toast.success('Creator unblocked') }}
-                                    className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
-                                >
-                                    <X className='h-3.5 w-3.5' />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )
+
+                    {Object.keys(creatorWhitelist).length > 0 && (
+                        <div className='px-1'>
+                            <Input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder='Search by creator name…'
+                                className='bg-white/5 border-white/10 text-sm'
+                            />
+                        </div>
+                    )}
+
+                    {creatorEntries.length === 0 ? (
+                        <div className='flex flex-col items-center justify-center py-10 gap-2 text-muted'>
+                            <ShieldCheck className='h-8 w-8 opacity-30' />
+                            <span className='text-sm'>{search ? 'No matches' : 'No Whitelisted Creators'}</span>
+                            {!search && <span className='text-xs opacity-60'>Add a creator screen name to bypass all filters</span>}
+                        </div>
+                    ) : (
+                        <div className='space-y-1.5 p-1'>
+                            {creatorEntries.map(([id, screenName]) => (
+                                <div key={id} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
+                                    <span className='text-emerald-300 font-medium text-xs shrink-0'>@{screenName}</span>
+                                    <span className='flex-1' />
+                                    <button
+                                        type='button'
+                                        title='Remove from whitelist'
+                                        onClick={() => { void removeCreatorFromWhitelist(id); toast.success('Creator removed from whitelist') }}
+                                        className='shrink-0 text-muted hover:text-rose-400 transition-colors cursor-pointer'
+                                    >
+                                        <X className='h-3.5 w-3.5' />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             )}
         </div>
     )
@@ -1511,6 +1993,7 @@ export default function SettingsDialog({ children }: { children: React.ReactNode
                     {tab === 'referral'  && <ReferralTab />}
                     {tab === 'labels'    && <LabelsTab />}
                     {tab === 'blacklist' && <BlacklistTab />}
+                    {tab === 'whitelist' && <WhitelistTab />}
                 </div>
             </DialogContent>
         </Dialog>

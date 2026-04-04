@@ -235,7 +235,8 @@ function CreatorRow({ community }: { community: XCommunity }) {
     const [editValue, setEditValue] = useState('')
     const [editColor, setEditColor] = useState(DEFAULT_LABEL_COLOR)
 
-    const currentLabelData = creatorLabels[creator.id]
+    const screenKey = (creator.screen_name ?? '').toLowerCase()
+    const currentLabelData = screenKey ? creatorLabels[screenKey] : undefined
 
     const startEdit = () => {
         setEditValue(currentLabelData?.label ?? creator.name ?? '')
@@ -245,18 +246,19 @@ function CreatorRow({ community }: { community: XCommunity }) {
 
     const saveEdit = async () => {
         const trimmed = editValue.trim()
-        if (!trimmed) return
-        await setCreatorLabel(creator.id, trimmed, editColor, creator.screen_name ?? '')
+        if (!trimmed || !creator.screen_name) return
+        await setCreatorLabel(creator.screen_name, trimmed, editColor)
         toast.success('Creator label saved')
         setEditing(false)
     }
 
     const onBlockCreator = async () => {
-        if (isCreatorBlacklisted(creator.id)) {
+        if (!creator.screen_name) return
+        if (isCreatorBlacklisted(creator.screen_name)) {
             toast.error('Already blocked')
             return
         }
-        await addCreatorToBlacklist(creator.id, creator.screen_name ?? '')
+        await addCreatorToBlacklist(creator.screen_name)
         toast.success('Creator blocked')
     }
 
@@ -508,7 +510,7 @@ function LastTokenCard({
                     <span className='inline-flex items-center gap-1 text-xs text-white/80'>
                         <HandCoins className='size-4' />
                         <span className='tabular-nums text-violet-400 font-medium'>
-                            {fmtSol((feesTerminal === 'axiom' ? t.axiom_fee : t.total_fee) ?? 0)} SOL
+                            {fmtSol((feesTerminal === 'axiom' ? t.fees.axiom : t.fees.gmgn) ?? 0)} SOL
                         </span>
                     </span>
 
@@ -722,15 +724,6 @@ export function TokenRow({
                     </span>
                     <span className='text-muted font-mono'>rate</span>
                 </span>
-
-                {dev.tokens.avg_ath_mcap > 0 && (
-                    <span className='inline-flex items-center gap-1' title='Avg ATH Market Cap'>
-                        <Zap className='h-3.5 w-3.5 text-muted' />
-                        <span className='tabular-nums text-amber-300 font-medium'>
-                            {fmtUsdCap(dev.tokens.avg_ath_mcap)}
-                        </span>
-                    </span>
-                )}
 
                 <span className='ml-auto inline-flex items-center gap-1.5'>
                     <button
