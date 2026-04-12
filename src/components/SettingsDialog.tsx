@@ -34,6 +34,7 @@ import {
     Clock4,
     Copy,
     KeyRound,
+    Plus,
     RefreshCw,
     ShieldAlert,
     ShieldCheck,
@@ -52,7 +53,7 @@ import gmgnIcon from '@/assets/terminals/gmgn.svg'
 
 type Tab = 'main' | 'referral' | 'labels' | 'blacklist' | 'whitelist'
 
-type FieldKey = 'devMin' | 'devMax' | 'migrationPct' | 'feesFilterValue' | 'minFundingAmount' | 'maxFundingAmount' | 'maxFundingAge' | 'minCommunityMembers' | 'maxCommunityMembers' | 'minCreatorFollowers' | 'maxCommunityAge'
+type FieldKey = 'devMin' | 'devMax' | 'migrationPct' | 'feesFilterValue' | 'minFundingAmount' | 'maxFundingAmount' | 'maxFundingAge' | 'minCommunityMembers' | 'maxCommunityMembers' | 'minCreatorFollowers' | 'maxCreatorFollowers' | 'maxCommunityAge' | 'maxCreatorAge'
 type Errors = Partial<Record<FieldKey, string>>
 
 type RecentUsage = {
@@ -396,15 +397,19 @@ function MainTab({ settings, store }: {
     const [feesTerminal,         setFeesTerminal]         = React.useState<FeesTerminal>(settings.feesTerminal)
     const [devHoldEnabled,       setDevHoldEnabled]       = React.useState(settings.devHoldEnabled)
     const [migrationEnabled,     setMigrationEnabled]     = React.useState(settings.migrationEnabled)
+    const [lastTokenMigrated,   setLastTokenMigrated]    = React.useState(settings.lastTokenMigrated)
     const [fundingEnabled,       setFundingEnabled]       = React.useState(settings.fundingEnabled)
     const [minFundingAmount,     setMinFundingAmount]     = React.useState(String(settings.minFundingAmount))
     const [maxFundingAmount,     setMaxFundingAmount]     = React.useState(String(settings.maxFundingAmount))
     const [maxFundingAge,        setMaxFundingAge]        = React.useState(String(settings.maxFundingAge))
     const [communityEnabled,     setCommunityEnabled]     = React.useState(settings.communityEnabled)
+    const [onlyCommunity,        setOnlyCommunity]        = React.useState(settings.onlyCommunity)
     const [minCommunityMembers,  setMinCommunityMembers]  = React.useState(String(settings.minCommunityMembers))
     const [maxCommunityMembers,  setMaxCommunityMembers]  = React.useState(String(settings.maxCommunityMembers))
     const [minCreatorFollowers,  setMinCreatorFollowers]  = React.useState(String(settings.minCreatorFollowers))
+    const [maxCreatorFollowers,  setMaxCreatorFollowers]  = React.useState(String(settings.maxCreatorFollowers))
     const [maxCommunityAge,     setMaxCommunityAge]     = React.useState(String(settings.maxCommunityAge))
+    const [maxCreatorAge,       setMaxCreatorAge]       = React.useState(String(settings.maxCreatorAge))
     // --- app settings state ---
     const [openInBrowser, setOpenInBrowser] = React.useState(settings.openInBrowser)
     const [openMode,      setOpenMode]      = React.useState<OpenMode>(settings.openMode)
@@ -434,15 +439,19 @@ function MainTab({ settings, store }: {
         setFeesTerminal(settings.feesTerminal)
         setDevHoldEnabled(settings.devHoldEnabled)
         setMigrationEnabled(settings.migrationEnabled)
+        setLastTokenMigrated(settings.lastTokenMigrated)
         setFundingEnabled(settings.fundingEnabled)
         setMinFundingAmount(String(settings.minFundingAmount))
         setMaxFundingAmount(String(settings.maxFundingAmount))
         setMaxFundingAge(String(settings.maxFundingAge))
         setCommunityEnabled(settings.communityEnabled)
+        setOnlyCommunity(settings.onlyCommunity)
         setMinCommunityMembers(String(settings.minCommunityMembers))
         setMaxCommunityMembers(String(settings.maxCommunityMembers))
         setMinCreatorFollowers(String(settings.minCreatorFollowers))
+        setMaxCreatorFollowers(String(settings.maxCreatorFollowers))
         setMaxCommunityAge(String(settings.maxCommunityAge))
+        setMaxCreatorAge(String(settings.maxCreatorAge))
         setOpenInBrowser(settings.openInBrowser)
         setOpenMode(settings.openMode)
         setTerminal(settings.terminal)
@@ -485,26 +494,21 @@ function MainTab({ settings, store }: {
         if (!fundMin.ok) next.minFundingAmount = 'err'
         if (!fundMax.ok) next.maxFundingAmount = 'err'
         if (!fundAge.ok) next.maxFundingAge = 'err'
-        if (fundMin.ok && fundMax.ok && fundMin.value > 0 && fundMax.value > 0 && fundMin.value > fundMax.value) {
-            next.minFundingAmount = 'err'
-            next.maxFundingAmount = 'err'
-        }
 
         const comMin  = parsePositiveNum(minCommunityMembers)
         const comMax  = parsePositiveNum(maxCommunityMembers)
         const creatMin = parsePositiveNum(minCreatorFollowers)
+        const creatMax = parsePositiveNum(maxCreatorFollowers)
 
         const comAge = parsePositiveNum(maxCommunityAge)
+        const creatAge = parsePositiveNum(maxCreatorAge)
 
         if (!comMin.ok)  next.minCommunityMembers = 'err'
         if (!comMax.ok)  next.maxCommunityMembers = 'err'
         if (!creatMin.ok) next.minCreatorFollowers = 'err'
+        if (!creatMax.ok) next.maxCreatorFollowers = 'err'
         if (!comAge.ok) next.maxCommunityAge = 'err'
-
-        if (comMin.ok && comMax.ok && comMin.value > 0 && comMax.value > 0 && comMin.value > comMax.value) {
-            next.minCommunityMembers = 'err'
-            next.maxCommunityMembers = 'err'
-        }
+        if (!creatAge.ok) next.maxCreatorAge = 'err'
 
         setErrors(next)
 
@@ -516,6 +520,7 @@ function MainTab({ settings, store }: {
                 devHoldEnabled,
                 migrationPct:        migValue,
                 migrationEnabled,
+                lastTokenMigrated,
                 hideMayhem,
                 feesFilterEnabled,
                 feesFilterMode,
@@ -526,10 +531,13 @@ function MainTab({ settings, store }: {
                 maxFundingAmount:    fundMax.ok ? fundMax.value : 0,
                 maxFundingAge:       fundAge.ok ? fundAge.value : 0,
                 communityEnabled,
+                onlyCommunity,
                 minCommunityMembers: comMin.ok  ? comMin.value  : 0,
                 maxCommunityMembers: comMax.ok  ? comMax.value  : 0,
                 minCreatorFollowers: creatMin.ok ? creatMin.value : 0,
+                maxCreatorFollowers: creatMax.ok ? creatMax.value : 0,
                 maxCommunityAge:    comAge.ok   ? comAge.value   : 0,
+                maxCreatorAge:      creatAge.ok ? creatAge.value : 0,
                 openInBrowser,
                 openMode,
                 terminal,
@@ -562,7 +570,7 @@ function MainTab({ settings, store }: {
             return
         }
         autoSave()
-    }, [devMin, devMax, devHoldEnabled, migration, migrationEnabled, hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge, communityEnabled, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
+    }, [devMin, devMax, devHoldEnabled, migration, migrationEnabled, lastTokenMigrated, hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge, communityEnabled, onlyCommunity, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCreatorFollowers, maxCommunityAge, maxCreatorAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
 
     return (
         <div className='space-y-4'>
@@ -598,7 +606,7 @@ function MainTab({ settings, store }: {
                         />
                         {devHoldEnabled && (
                             <>
-                                <Separator className='opacity-40' />
+                                <Separator className='opacity-80' />
                                 <div className='space-y-2'>
                                     <Label className='text-xs text-muted'>Holdings %</Label>
                                     <div className='grid grid-cols-2 gap-3'>
@@ -612,16 +620,16 @@ function MainTab({ settings, store }: {
 
                     <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
                         <RowSwitch
-                            label='Migration Rate'
-                            description='Filter by token migration success rate'
+                            label='Migration'
+                            description='Filter by dev migration success rate'
                             checked={migrationEnabled}
                             onCheckedChange={setMigrationEnabled}
                         />
                         {migrationEnabled && (
                             <>
-                                <Separator className='opacity-40' />
+                                <Separator className='opacity-80' />
                                 <div className='space-y-2'>
-                                    <Label className='text-xs text-muted'>Rate %</Label>
+                                    <Label className='text-xs text-muted'>Rate (% of migrated tokens from all dev tokens)</Label>
                                     <SuffixInput value={migration} onChange={setMigration} suffix='MIN' placeholder='15' error={!!errors.migrationPct} />
                                     <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-sky-500/8 ring-1 ring-sky-500/20'>
                                         <Info className='h-3.5 w-3.5 text-sky-400 shrink-0' />
@@ -630,6 +638,13 @@ function MainTab({ settings, store }: {
                                         </p>
                                     </div>
                                 </div>
+                                <Separator className='opacity-80' />
+                                <RowSwitch
+                                    label='Last Token Migrated'
+                                    description='Require the most recent dev token to be migrated'
+                                    checked={lastTokenMigrated}
+                                    onCheckedChange={setLastTokenMigrated}
+                                />
                             </>
                         )}
                     </div>
@@ -643,16 +658,16 @@ function MainTab({ settings, store }: {
                         />
                         {fundingEnabled && (
                             <>
-                                <Separator className='opacity-40' />
+                                <Separator className='opacity-80' />
                                 <div className='space-y-2'>
-                                    <Label className='text-xs text-muted'>Amount</Label>
+                                    <Label className='text-xs text-muted'>Amount (SOL funded to dev wallet)</Label>
                                     <div className='grid grid-cols-2 gap-3'>
                                         <SuffixInput value={minFundingAmount} onChange={setMinFundingAmount} suffix='MIN' placeholder='0' error={!!errors.minFundingAmount} />
                                         <SuffixInput value={maxFundingAmount} onChange={setMaxFundingAmount} suffix='MAX' placeholder='0' error={!!errors.maxFundingAmount} />
                                     </div>
                                 </div>
                                 <div className='space-y-2'>
-                                    <Label className='text-xs text-muted'>Age</Label>
+                                    <Label className='text-xs text-muted'>Age (hours since funding tx)</Label>
                                     <SuffixInput value={maxFundingAge} onChange={setMaxFundingAge} suffix='HR' placeholder='0' error={!!errors.maxFundingAge} />
                                     <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-amber-500/8 ring-1 ring-amber-500/20'>
                                         <Info className='h-3.5 w-3.5 text-amber-400 shrink-0' />
@@ -687,7 +702,7 @@ function MainTab({ settings, store }: {
                         />
                         {feesFilterEnabled && (
                             <>
-                                <Separator className='opacity-40' />
+                                <Separator className='opacity-80' />
                                 <div className='space-y-3'>
                                     <div className='space-y-1.5'>
                                         <Label className='text-xs text-muted'>Terminal</Label>
@@ -728,6 +743,13 @@ function MainTab({ settings, store }: {
 
                     <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>
                         <RowSwitch
+                            label='Community Tokens Only'
+                            description='Show only tokens with an attached X community'
+                            checked={onlyCommunity}
+                            onCheckedChange={setOnlyCommunity}
+                        />
+                        <Separator className='opacity-80' />
+                        <RowSwitch
                             label='Community Filter'
                             description='Filter by X/Twitter community stats'
                             checked={communityEnabled}
@@ -735,7 +757,7 @@ function MainTab({ settings, store }: {
                         />
                         {communityEnabled && (
                             <>
-                                <Separator className='opacity-40' />
+                                <Separator className='opacity-80' />
                                 <div className='space-y-2'>
                                     <Label className='text-xs text-muted'>Community Members</Label>
                                     <div className='grid grid-cols-2 gap-3'>
@@ -744,14 +766,21 @@ function MainTab({ settings, store }: {
                                     </div>
                                 </div>
                                 <div className='space-y-2'>
+                                    <Label className='text-xs text-muted'>Creator Followers</Label>
                                     <div className='grid grid-cols-2 gap-3'>
-                                        <div className='space-y-1.5'>
-                                            <Label className='text-xs text-muted'>Creator Followers</Label>
-                                            <SuffixInput value={minCreatorFollowers} onChange={setMinCreatorFollowers} suffix='MIN' placeholder='0' error={!!errors.minCreatorFollowers} />
-                                        </div>
+                                        <SuffixInput value={minCreatorFollowers} onChange={setMinCreatorFollowers} suffix='MIN' placeholder='0' error={!!errors.minCreatorFollowers} />
+                                        <SuffixInput value={maxCreatorFollowers} onChange={setMaxCreatorFollowers} suffix='MAX' placeholder='0' error={!!errors.maxCreatorFollowers} />
+                                    </div>
+                                </div>
+                                <div className='space-y-2'>
+                                    <div className='grid grid-cols-2 gap-3'>
                                         <div className='space-y-1.5'>
                                             <Label className='text-xs text-muted'>Max Community Age</Label>
                                             <SuffixInput value={maxCommunityAge} onChange={setMaxCommunityAge} suffix='HR' placeholder='0' error={!!errors.maxCommunityAge} />
+                                        </div>
+                                        <div className='space-y-1.5'>
+                                            <Label className='text-xs text-muted'>Max Creator Age</Label>
+                                            <SuffixInput value={maxCreatorAge} onChange={setMaxCreatorAge} suffix='HR' placeholder='0' error={!!errors.maxCreatorAge} />
                                         </div>
                                     </div>
                                     <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-violet-500/8 ring-1 ring-violet-500/20'>
@@ -784,7 +813,7 @@ function MainTab({ settings, store }: {
                         />
                         {openInBrowser && (
                             <>
-                                <Separator className='opacity-40' />
+                                <Separator className='opacity-80' />
                                 <div className='space-y-1.5'>
                                     <Label className='text-xs text-muted'>Open Mode</Label>
                                     <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
@@ -829,7 +858,7 @@ function MainTab({ settings, store }: {
                         />
                         {soundEnabled && (
                             <>
-                                <Separator className='opacity-40' />
+                                <Separator className='opacity-80' />
                                 <div className='space-y-1.5'>
                                     <div className='flex items-center justify-between'>
                                         <Label className='text-xs text-muted'>Volume</Label>
@@ -1362,6 +1391,7 @@ function LabelsTab() {
     const { walletLabels, setWalletLabel, removeWalletLabel, creatorLabels, setCreatorLabel, removeCreatorLabel } = useSettings()
     const [view, setView] = React.useState<LabelsView>('wallets')
     const [search, setSearch] = React.useState('')
+    const [showForm, setShowForm] = React.useState(false)
 
     // manual add state — wallets
     const [walletAddrInput, setWalletAddrInput] = React.useState('')
@@ -1409,8 +1439,8 @@ function LabelsTab() {
     return (
         <div className='space-y-2'>
             {/* toggle */}
-            <div className='px-1 pb-1'>
-            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+            <div className='px-1 pb-1 flex items-center gap-1.5'>
+            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8 flex-1'>
                 {(['wallets', 'creators'] as LabelsView[]).map(v => (
                     <button
                         key={v}
@@ -1425,32 +1455,47 @@ function LabelsTab() {
                     </button>
                 ))}
             </div>
+            <button
+                type='button'
+                title='Add manually'
+                onClick={() => setShowForm(f => !f)}
+                className={cn(
+                    'shrink-0 rounded-[5px] px-2 py-1.75 ring-1 ring-white/8 transition-colors cursor-pointer',
+                    showForm ? 'bg-white/10 text-white' : 'bg-white/5 text-muted hover:text-zinc-300',
+                )}
+            >
+                <Plus className='h-3.5 w-3.5' />
+            </button>
             </div>
 
             {/* wallet labels */}
             {view === 'wallets' && (
                 <div className='space-y-2'>
-                    <div className='px-1 space-y-1.5'>
-                        <div className='flex gap-2'>
-                            <Input
-                                value={walletAddrInput}
-                                onChange={e => { setWalletAddrInput(e.target.value); setWalletError(null) }}
-                                placeholder='Wallet address…'
-                                className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddWalletLabel() }}
-                            />
-                            <Input
-                                value={walletLabelInput}
-                                onChange={e => setWalletLabelInput(e.target.value)}
-                                placeholder='Label…'
-                                className='bg-white/5 border-white/10 text-sm w-24'
-                                maxLength={10}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddWalletLabel() }}
-                            />
-                            <Button onClick={handleAddWalletLabel} className='shrink-0'>Add</Button>
+                    {showForm && (<>
+                        <Separator className='opacity-80' />
+                        <div className='px-1 space-y-1.5'>
+                            <div className='flex gap-2'>
+                                <Input
+                                    value={walletAddrInput}
+                                    onChange={e => { setWalletAddrInput(e.target.value); setWalletError(null) }}
+                                    placeholder='Wallet address…'
+                                    className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleAddWalletLabel() }}
+                                />
+                                <Input
+                                    value={walletLabelInput}
+                                    onChange={e => setWalletLabelInput(e.target.value)}
+                                    placeholder='Label…'
+                                    className='bg-white/5 border-white/10 text-sm w-24'
+                                    maxLength={10}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleAddWalletLabel() }}
+                                />
+                                <Button onClick={handleAddWalletLabel} className='shrink-0'>Add</Button>
+                            </div>
+                            {walletError && <FieldError message={walletError} />}
                         </div>
-                        {walletError && <FieldError message={walletError} />}
-                    </div>
+                        <Separator className='opacity-80' />
+                    </>)}
 
                     {Object.keys(walletLabels).length > 0 && (
                         <div className='px-1'>
@@ -1470,7 +1515,7 @@ function LabelsTab() {
                             {!search && <span className='text-xs opacity-60'>Add a label above or from any token card</span>}
                         </div>
                     ) : (
-                        <div className='space-y-1.5 px-1'>
+                        <div className='space-y-1.5 p-1'>
                             {walletEntries.map(([addr, label]) => (
                                 <div key={addr} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
                                     <span className='text-sky-300 font-medium text-xs uppercase shrink-0'>{label}</span>
@@ -1493,27 +1538,31 @@ function LabelsTab() {
             {/* creator labels */}
             {view === 'creators' && (
                 <div className='space-y-2'>
-                    <div className='px-1 space-y-1.5'>
-                        <div className='flex gap-2'>
-                            <Input
-                                value={creatorNameInput}
-                                onChange={e => { setCreatorNameInput(e.target.value); setCreatorError(null) }}
-                                placeholder='@screen_name'
-                                className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddCreatorLabel() }}
-                            />
-                            <Input
-                                value={creatorLabelInput}
-                                onChange={e => setCreatorLabelInput(e.target.value)}
-                                placeholder='Label…'
-                                className='bg-white/5 border-white/10 text-sm w-24'
-                                maxLength={16}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddCreatorLabel() }}
-                            />
-                            <Button onClick={handleAddCreatorLabel} className='shrink-0'>Add</Button>
+                    {showForm && (<>
+                        <Separator className='opacity-80' />
+                        <div className='px-1 space-y-1.5'>
+                            <div className='flex gap-2'>
+                                <Input
+                                    value={creatorNameInput}
+                                    onChange={e => { setCreatorNameInput(e.target.value); setCreatorError(null) }}
+                                    placeholder='screen_name'
+                                    className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleAddCreatorLabel() }}
+                                />
+                                <Input
+                                    value={creatorLabelInput}
+                                    onChange={e => setCreatorLabelInput(e.target.value)}
+                                    placeholder='Label…'
+                                    className='bg-white/5 border-white/10 text-sm w-24'
+                                    maxLength={16}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleAddCreatorLabel() }}
+                                />
+                                <Button onClick={handleAddCreatorLabel} className='shrink-0'>Add</Button>
+                            </div>
+                            {creatorError && <FieldError message={creatorError} />}
                         </div>
-                        {creatorError && <FieldError message={creatorError} />}
-                    </div>
+                        <Separator className='opacity-80' />
+                    </>)}
 
                     {Object.keys(creatorLabels).length > 0 && (
                         <div className='px-1'>
@@ -1533,7 +1582,7 @@ function LabelsTab() {
                             {!search && <span className='text-xs opacity-60'>Add a label above or from the hover card</span>}
                         </div>
                     ) : (
-                        <div className='space-y-1.5 px-1'>
+                        <div className='space-y-1.5 p-1'>
                             {creatorEntries.map(([screenName, data]) => (
                                 <div key={screenName} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
                                     <span
@@ -1572,6 +1621,7 @@ function BlacklistTab() {
     } = useSettings()
     const [view, setView] = React.useState<BlacklistView>('wallets')
     const [search, setSearch] = React.useState('')
+    const [showForm, setShowForm] = React.useState(false)
 
     // manual add state — wallets
     const [walletInput, setWalletInput] = React.useState('')
@@ -1614,8 +1664,8 @@ function BlacklistTab() {
     return (
         <div className='space-y-2'>
             {/* toggle */}
-            <div className='px-1 pb-1'>
-            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+            <div className='px-1 pb-1 flex items-center gap-1.5'>
+            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8 flex-1'>
                 {(['wallets', 'creators'] as BlacklistView[]).map(v => (
                     <button
                         key={v}
@@ -1630,24 +1680,39 @@ function BlacklistTab() {
                     </button>
                 ))}
             </div>
+            <button
+                type='button'
+                title='Add manually'
+                onClick={() => setShowForm(f => !f)}
+                className={cn(
+                    'shrink-0 rounded-[5px] px-2 py-1.75 ring-1 ring-white/8 transition-colors cursor-pointer',
+                    showForm ? 'bg-white/10 text-white' : 'bg-white/5 text-muted hover:text-zinc-300',
+                )}
+            >
+                <Plus className='h-3.5 w-3.5' />
+            </button>
             </div>
 
             {/* wallet blacklist */}
             {view === 'wallets' && (
                 <div className='space-y-2'>
-                    <div className='px-1 space-y-1.5'>
-                        <div className='flex gap-2'>
-                            <Input
-                                value={walletInput}
-                                onChange={e => { setWalletInput(e.target.value); setWalletError(null) }}
-                                placeholder='Wallet address…'
-                                className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddWallet() }}
-                            />
-                            <Button onClick={handleAddWallet} className='shrink-0'>Add</Button>
+                    {showForm && (<>
+                        <Separator className='opacity-80' />
+                        <div className='px-1 space-y-1.5'>
+                            <div className='flex gap-2'>
+                                <Input
+                                    value={walletInput}
+                                    onChange={e => { setWalletInput(e.target.value); setWalletError(null) }}
+                                    placeholder='Wallet address…'
+                                    className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleAddWallet() }}
+                                />
+                                <Button onClick={handleAddWallet} className='shrink-0'>Add</Button>
+                            </div>
+                            {walletError && <FieldError message={walletError} />}
                         </div>
-                        {walletError && <FieldError message={walletError} />}
-                    </div>
+                        <Separator className='opacity-80' />
+                    </>)}
 
                     {blacklist.size > 0 && (
                         <div className='px-1'>
@@ -1667,7 +1732,7 @@ function BlacklistTab() {
                             {!search && <span className='text-xs opacity-60'>Add a wallet above or ban from any token card</span>}
                         </div>
                     ) : (
-                        <div className='space-y-1.5 px-1'>
+                        <div className='space-y-1.5 p-1'>
                             {walletEntries.map(addr => {
                                 const label = walletLabels[addr]
                                 return (
@@ -1695,19 +1760,23 @@ function BlacklistTab() {
             {/* creator blacklist */}
             {view === 'creators' && (
                 <div className='space-y-2'>
-                    <div className='px-1 space-y-1.5'>
-                        <div className='flex gap-2'>
-                            <Input
-                                value={creatorInput}
-                                onChange={e => { setCreatorInput(e.target.value); setCreatorError(null) }}
-                                placeholder='@screen_name'
-                                className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddCreator() }}
-                            />
-                            <Button onClick={handleAddCreator} className='shrink-0'>Add</Button>
+                    {showForm && (<>
+                        <Separator className='opacity-80' />
+                        <div className='px-1 space-y-1.5'>
+                            <div className='flex gap-2'>
+                                <Input
+                                    value={creatorInput}
+                                    onChange={e => { setCreatorInput(e.target.value); setCreatorError(null) }}
+                                    placeholder='screen_name'
+                                    className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleAddCreator() }}
+                                />
+                                <Button onClick={handleAddCreator} className='shrink-0'>Add</Button>
+                            </div>
+                            {creatorError && <FieldError message={creatorError} />}
                         </div>
-                        {creatorError && <FieldError message={creatorError} />}
-                    </div>
+                        <Separator className='opacity-80' />
+                    </>)}
 
                     {Object.keys(creatorBlacklist).length > 0 && (
                         <div className='px-1'>
@@ -1727,7 +1796,7 @@ function BlacklistTab() {
                             {!search && <span className='text-xs opacity-60'>Add a creator above or block from the hover card</span>}
                         </div>
                     ) : (
-                        <div className='space-y-1.5 px-1'>
+                        <div className='space-y-1.5 p-1'>
                             {creatorEntries.map(([key, screenName]) => (
                                 <div key={key} className='flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white/3 ring-1 ring-white/8'>
                                     <span className='text-rose-300 font-medium text-xs shrink-0'>@{screenName || key}</span>
@@ -1762,6 +1831,7 @@ function WhitelistTab() {
     } = useSettings()
     const [view, setView] = React.useState<WhitelistView>('wallets')
     const [search, setSearch] = React.useState('')
+    const [showForm, setShowForm] = React.useState(false)
     const [walletInput, setWalletInput] = React.useState('')
     const [walletError, setWalletError] = React.useState<string | null>(null)
     const [creatorInput, setCreatorInput] = React.useState('')
@@ -1800,8 +1870,8 @@ function WhitelistTab() {
     return (
         <div className='space-y-2'>
             {/* toggle */}
-            <div className='px-1 pb-1'>
-            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
+            <div className='px-1 pb-1 flex items-center gap-1.5'>
+            <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8 flex-1'>
                 {(['wallets', 'creators'] as WhitelistView[]).map(v => (
                     <button
                         key={v}
@@ -1816,30 +1886,45 @@ function WhitelistTab() {
                     </button>
                 ))}
             </div>
+            <button
+                type='button'
+                title='Add manually'
+                onClick={() => setShowForm(f => !f)}
+                className={cn(
+                    'shrink-0 rounded-[5px] px-2 py-1.75 ring-1 ring-white/8 transition-colors cursor-pointer',
+                    showForm ? 'bg-white/10 text-white' : 'bg-white/5 text-muted hover:text-zinc-300',
+                )}
+            >
+                <Plus className='h-3.5 w-3.5' />
+            </button>
             </div>
 
             {/* wallets whitelist */}
             {view === 'wallets' && (
                 <div className='space-y-2'>
-                    <div className='px-1 space-y-1.5'>
-                        <div className='flex gap-2'>
-                            <Input
-                                value={walletInput}
-                                onChange={e => { setWalletInput(e.target.value); setWalletError(null) }}
-                                placeholder='Wallet address…'
-                                className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddWallet() }}
-                            />
-                            <Button onClick={handleAddWallet} className='shrink-0'>Add</Button>
+                    {showForm && (<>
+                        <Separator className='opacity-80' />
+                        <div className='px-1 space-y-1.5'>
+                            <div className='flex gap-2'>
+                                <Input
+                                    value={walletInput}
+                                    onChange={e => { setWalletInput(e.target.value); setWalletError(null) }}
+                                    placeholder='Wallet address…'
+                                    className={cn('bg-white/5 border-white/10 font-mono text-sm flex-1', walletError && 'border-rose-500/60')}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleAddWallet() }}
+                                />
+                                <Button onClick={handleAddWallet} className='shrink-0'>Add</Button>
+                            </div>
+                            {walletError && <FieldError message={walletError} />}
+                            <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-emerald-500/8 ring-1 ring-emerald-500/20'>
+                                <Info className='h-3.5 w-3.5 text-emerald-400 shrink-0' />
+                                <p className='text-[11px] text-emerald-200/70'>
+                                    Whitelisted wallets bypass all filters
+                                </p>
+                            </div>
                         </div>
-                        {walletError && <FieldError message={walletError} />}
-                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-emerald-500/8 ring-1 ring-emerald-500/20'>
-                            <Info className='h-3.5 w-3.5 text-emerald-400 shrink-0' />
-                            <p className='text-[11px] text-emerald-200/70'>
-                                Whitelisted wallets bypass all filters
-                            </p>
-                        </div>
-                    </div>
+                        <Separator className='opacity-80' />
+                    </>)}
 
                     {devWhitelist.size > 0 && (
                         <div className='px-1'>
@@ -1887,25 +1972,29 @@ function WhitelistTab() {
             {/* creators whitelist */}
             {view === 'creators' && (
                 <div className='space-y-2'>
-                    <div className='px-1 space-y-1.5'>
-                        <div className='flex gap-2'>
-                            <Input
-                                value={creatorInput}
-                                onChange={e => { setCreatorInput(e.target.value); setCreatorError(null) }}
-                                placeholder='@screen_name'
-                                className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddCreator() }}
-                            />
-                            <Button onClick={handleAddCreator} className='shrink-0'>Add</Button>
+                    {showForm && (<>
+                        <Separator className='opacity-80' />
+                        <div className='px-1 space-y-1.5'>
+                            <div className='flex gap-2'>
+                                <Input
+                                    value={creatorInput}
+                                    onChange={e => { setCreatorInput(e.target.value); setCreatorError(null) }}
+                                    placeholder='screen_name'
+                                    className={cn('bg-white/5 border-white/10 text-sm flex-1', creatorError && 'border-rose-500/60')}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleAddCreator() }}
+                                />
+                                <Button onClick={handleAddCreator} className='shrink-0'>Add</Button>
+                            </div>
+                            {creatorError && <FieldError message={creatorError} />}
+                            <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-emerald-500/8 ring-1 ring-emerald-500/20'>
+                                <Info className='h-3.5 w-3.5 text-emerald-400 shrink-0' />
+                                <p className='text-[11px] text-emerald-200/70'>
+                                    Whitelisted creators bypass all filters
+                                </p>
+                            </div>
                         </div>
-                        {creatorError && <FieldError message={creatorError} />}
-                        <div className='flex items-center gap-2 rounded-md px-2.5 py-1.5 bg-emerald-500/8 ring-1 ring-emerald-500/20'>
-                            <Info className='h-3.5 w-3.5 text-emerald-400 shrink-0' />
-                            <p className='text-[11px] text-emerald-200/70'>
-                                Whitelisted creators bypass all filters
-                            </p>
-                        </div>
-                    </div>
+                        <Separator className='opacity-80' />
+                    </>)}
 
                     {Object.keys(creatorWhitelist).length > 0 && (
                         <div className='px-1'>

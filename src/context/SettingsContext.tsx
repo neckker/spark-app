@@ -14,6 +14,7 @@ export interface Settings {
     devHoldEnabled: boolean
     migrationPct: number
     migrationEnabled: boolean
+    lastTokenMigrated: boolean
     openInBrowser: boolean
     terminal: Terminal
     uiScale: number
@@ -34,10 +35,13 @@ export interface Settings {
     soundVolume: number // 0-100
     // community filters
     communityEnabled: boolean
+    onlyCommunity: boolean
     minCommunityMembers: number
     maxCommunityMembers: number
     minCreatorFollowers: number
+    maxCreatorFollowers: number
     maxCommunityAge: number // hours, 0 = disabled
+    maxCreatorAge: number   // hours, 0 = disabled
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -46,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
     devHoldEnabled: true,
     migrationPct: 15,
     migrationEnabled: true,
+    lastTokenMigrated: false,
     openInBrowser: false,
     openMode: 'new-tab',
     terminal: 'axiom',
@@ -62,10 +67,13 @@ export const DEFAULT_SETTINGS: Settings = {
     soundEnabled: true,
     soundVolume: 70,
     communityEnabled: false,
+    onlyCommunity: false,
     minCommunityMembers: 0,
     maxCommunityMembers: 0,
     minCreatorFollowers: 0,
+    maxCreatorFollowers: 0,
     maxCommunityAge: 0,
+    maxCreatorAge: 0,
 }
 
 /** address → human label (до 10 символов) */
@@ -176,6 +184,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const devHoldEnabled     = (await store.get<boolean>('devHoldEnabled'))    ?? DEFAULT_SETTINGS.devHoldEnabled
             const migrationPct       = (await store.get<number>('migrationPct'))       ?? DEFAULT_SETTINGS.migrationPct
             const migrationEnabled   = (await store.get<boolean>('migrationEnabled'))  ?? DEFAULT_SETTINGS.migrationEnabled
+            const lastTokenMigrated  = (await store.get<boolean>('lastTokenMigrated')) ?? DEFAULT_SETTINGS.lastTokenMigrated
             const openInBrowser      = (await store.get<boolean>('openInBrowser'))     ?? DEFAULT_SETTINGS.openInBrowser
             const openMode           = (await store.get<OpenMode>('openMode'))         ?? DEFAULT_SETTINGS.openMode
             const terminal           = (await store.get<Terminal>('terminal'))         ?? DEFAULT_SETTINGS.terminal
@@ -192,10 +201,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const soundEnabled          = (await store.get<boolean>('soundEnabled'))         ?? DEFAULT_SETTINGS.soundEnabled
             const soundVolume           = (await store.get<number>('soundVolume'))            ?? DEFAULT_SETTINGS.soundVolume
             const communityEnabled      = (await store.get<boolean>('communityEnabled'))     ?? DEFAULT_SETTINGS.communityEnabled
+            const onlyCommunity         = (await store.get<boolean>('onlyCommunity'))        ?? DEFAULT_SETTINGS.onlyCommunity
             const minCommunityMembers   = (await store.get<number>('minCommunityMembers'))   ?? DEFAULT_SETTINGS.minCommunityMembers
             const maxCommunityMembers   = (await store.get<number>('maxCommunityMembers'))   ?? DEFAULT_SETTINGS.maxCommunityMembers
             const minCreatorFollowers   = (await store.get<number>('minCreatorFollowers'))   ?? DEFAULT_SETTINGS.minCreatorFollowers
+            const maxCreatorFollowers   = (await store.get<number>('maxCreatorFollowers'))   ?? DEFAULT_SETTINGS.maxCreatorFollowers
             const maxCommunityAge       = (await store.get<number>('maxCommunityAge'))       ?? DEFAULT_SETTINGS.maxCommunityAge
+            const maxCreatorAge         = (await store.get<number>('maxCreatorAge'))         ?? DEFAULT_SETTINGS.maxCreatorAge
             const rawLabels             = (await store.get<WalletLabels>('walletLabels'))    ?? {}
             const rawCreatorLabels   = (await store.get<Record<string, unknown>>('creatorLabels')) ?? {}
             const rawBlacklist       = (await store.get<string[]>('blacklist'))          ?? []
@@ -214,12 +226,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             }
 
             setSettings({
-                devMin, devMax, devHoldEnabled, migrationPct, migrationEnabled,
+                devMin, devMax, devHoldEnabled, migrationPct, migrationEnabled, lastTokenMigrated,
                 openInBrowser, openMode, terminal, uiScale,
                 hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal,
                 fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge,
                 soundEnabled, soundVolume,
-                communityEnabled, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCommunityAge,
+                communityEnabled, onlyCommunity, minCommunityMembers, maxCommunityMembers,
+                minCreatorFollowers, maxCreatorFollowers, maxCommunityAge, maxCreatorAge,
             })
             setWalletLabels(rawLabels)
             setCreatorLabels(migratedCreatorLabels)

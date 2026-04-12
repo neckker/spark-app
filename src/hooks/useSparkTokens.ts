@@ -14,11 +14,11 @@ type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
 export type XCommunityCreator = {
     id: string
     name: string | null
-    screen_name: string | null
-    avatar: string | null
-    following_count: number
-    followers_count: number
-    is_blue_verified: boolean
+    username: string | null
+    avatar_url: string | null
+    following: number
+    followers: number
+    is_verified: boolean
     joined_at: number
 }
 
@@ -26,8 +26,8 @@ export type XCommunity = {
     id: string
     name: string
     access: string | null
-    banner: string | null
-    member_count: number
+    banner_url: string | null
+    members: number
     description: string | null
     created_at: number
     creator: XCommunityCreator | null
@@ -81,6 +81,7 @@ export type LastToken = {
     address: string
     pair: string | null
     is_migrated: boolean
+    is_tracked: boolean
     created_at: number
     dex_paid: boolean
     fees: { axiom: number; gmgn: number }
@@ -186,11 +187,11 @@ function normalizeMetadata(raw: unknown): Metadata | null {
             creator = {
                 id: String(cr.id ?? ''),
                 name: typeof cr.name === 'string' ? cr.name : null,
-                screen_name: typeof cr.screen_name === 'string' ? cr.screen_name : null,
-                avatar: typeof cr.avatar === 'string' ? cr.avatar : null,
-                following_count: typeof cr.following_count === 'number' ? cr.following_count : 0,
-                followers_count: typeof cr.followers_count === 'number' ? cr.followers_count : 0,
-                is_blue_verified: cr.is_blue_verified === true,
+                username: typeof cr.username === 'string' ? cr.username : null,
+                avatar_url: typeof cr.avatar_url === 'string' ? cr.avatar_url : null,
+                following: typeof cr.following === 'number' ? cr.following : 0,
+                followers: typeof cr.followers === 'number' ? cr.followers : 0,
+                is_verified: cr.is_verified === true,
                 joined_at: typeof cr.joined_at === 'number' ? cr.joined_at : 0,
             }
         }
@@ -198,8 +199,8 @@ function normalizeMetadata(raw: unknown): Metadata | null {
             id: String(c.id),
             name: typeof c.name === 'string' ? c.name : '',
             access: typeof c.access === 'string' ? c.access : null,
-            banner: typeof c.banner === 'string' ? c.banner : null,
-            member_count: typeof c.member_count === 'number' ? c.member_count : 0,
+            banner_url: typeof c.banner_url === 'string' ? c.banner_url : null,
+            members: typeof c.members === 'number' ? c.members : 0,
             description: typeof c.description === 'string' ? c.description : null,
             created_at: typeof c.created_at === 'number' ? c.created_at : 0,
             creator,
@@ -234,6 +235,7 @@ function normalizeLastTokens(raw: unknown[]): LastToken[] {
                 address:     typeof r.address === 'string'      ? r.address     : '',
                 pair:        typeof r.pair === 'string'         ? r.pair        : null,
                 is_migrated: typeof r.is_migrated === 'boolean' ? r.is_migrated : false,
+                is_tracked:  typeof r.is_tracked === 'boolean'  ? r.is_tracked  : false,
                 created_at:  typeof r.created_at === 'number'   ? r.created_at  : 0,
                 dex_paid:    typeof r.dex_paid === 'boolean'    ? r.dex_paid    : false,
                 fees: {
@@ -258,19 +260,17 @@ function passesFeeFilter(
     feesTerminal: 'axiom' | 'gmgn',
 ): boolean {
     if (!enabled) return true
+    if (lastTokens.length === 0) return false
 
     const getFee = (t: LastToken) => feesTerminal === 'axiom' ? t.fees.axiom : t.fees.gmgn
 
-    const withFees = lastTokens.filter(t => getFee(t) > 0)
-    if (withFees.length === 0) return false
+    if (mode === 'each') return lastTokens.every(t => getFee(t) >= threshold)
 
-    if (mode === 'each') return withFees.every(t => getFee(t) >= threshold)
-
-    const sum = withFees.reduce((acc, t) => acc + getFee(t), 0)
+    const sum = lastTokens.reduce((acc, t) => acc + getFee(t), 0)
 
     if (mode === 'total') return sum >= threshold
 
-    return (sum / withFees.length) >= threshold
+    return (sum / lastTokens.length) >= threshold
 }
 
 // --- hook ---
@@ -291,16 +291,20 @@ export function useSparkTokens() {
         devHoldEnabled: settings.devHoldEnabled,
         migrationPct: settings.migrationPct,
         migrationEnabled: settings.migrationEnabled,
+        lastTokenMigrated: settings.lastTokenMigrated,
         hideMayhem: settings.hideMayhem,
         feesFilterEnabled: settings.feesFilterEnabled,
         feesFilterMode: settings.feesFilterMode,
         feesFilterValue: settings.feesFilterValue,
         feesTerminal: settings.feesTerminal,
         communityEnabled: settings.communityEnabled,
+        onlyCommunity: settings.onlyCommunity,
         minCommunityMembers: settings.minCommunityMembers,
         maxCommunityMembers: settings.maxCommunityMembers,
         minCreatorFollowers: settings.minCreatorFollowers,
+        maxCreatorFollowers: settings.maxCreatorFollowers,
         maxCommunityAge: settings.maxCommunityAge,
+        maxCreatorAge: settings.maxCreatorAge,
         fundingEnabled: settings.fundingEnabled,
         minFundingAmount: settings.minFundingAmount,
         maxFundingAmount: settings.maxFundingAmount,
@@ -326,16 +330,20 @@ export function useSparkTokens() {
             devHoldEnabled: settings.devHoldEnabled,
             migrationPct: settings.migrationPct,
             migrationEnabled: settings.migrationEnabled,
+            lastTokenMigrated: settings.lastTokenMigrated,
             hideMayhem: settings.hideMayhem,
             feesFilterEnabled: settings.feesFilterEnabled,
             feesFilterMode: settings.feesFilterMode,
             feesFilterValue: settings.feesFilterValue,
             feesTerminal: settings.feesTerminal,
             communityEnabled: settings.communityEnabled,
+            onlyCommunity: settings.onlyCommunity,
             minCommunityMembers: settings.minCommunityMembers,
             maxCommunityMembers: settings.maxCommunityMembers,
             minCreatorFollowers: settings.minCreatorFollowers,
+            maxCreatorFollowers: settings.maxCreatorFollowers,
             maxCommunityAge: settings.maxCommunityAge,
+            maxCreatorAge: settings.maxCreatorAge,
             fundingEnabled: settings.fundingEnabled,
             minFundingAmount: settings.minFundingAmount,
             maxFundingAmount: settings.maxFundingAmount,
@@ -347,16 +355,20 @@ export function useSparkTokens() {
         settings.devHoldEnabled,
         settings.migrationPct,
         settings.migrationEnabled,
+        settings.lastTokenMigrated,
         settings.hideMayhem,
         settings.feesFilterEnabled,
         settings.feesFilterMode,
         settings.feesFilterValue,
         settings.feesTerminal,
         settings.communityEnabled,
+        settings.onlyCommunity,
         settings.minCommunityMembers,
         settings.maxCommunityMembers,
         settings.minCreatorFollowers,
+        settings.maxCreatorFollowers,
         settings.maxCommunityAge,
+        settings.maxCreatorAge,
         settings.fundingEnabled,
         settings.minFundingAmount,
         settings.maxFundingAmount,
@@ -470,7 +482,7 @@ export function useSparkTokens() {
             const lastTokens = normalizeLastTokens(last_tokens)
 
             const creator = metadata?.xcommunity?.creator
-            const creatorScreenName = creator?.screen_name?.toLowerCase()
+            const creatorScreenName = creator?.username?.toLowerCase()
             const whitelisted = isDevWhitelistedRef.current(dev.address)
                 || (creatorScreenName != null && isCreatorWhitelistedRef.current(creatorScreenName))
 
@@ -481,16 +493,20 @@ export function useSparkTokens() {
                     devHoldEnabled,
                     migrationPct,
                     migrationEnabled,
+                    lastTokenMigrated,
                     hideMayhem,
                     feesFilterEnabled,
                     feesFilterMode,
                     feesFilterValue,
                     feesTerminal,
                     communityEnabled,
+                    onlyCommunity,
                     minCommunityMembers,
                     maxCommunityMembers,
                     minCreatorFollowers,
+                    maxCreatorFollowers,
                     maxCommunityAge,
+                    maxCreatorAge,
                     fundingEnabled,
                     minFundingAmount,
                     maxFundingAmount,
@@ -505,6 +521,7 @@ export function useSparkTokens() {
                 }
                 if (migrationEnabled) {
                     if (dev.tokens.rate < migrationPct) return
+                    if (lastTokenMigrated && lastTokens.length > 0 && !lastTokens[0].is_migrated) return
                 }
                 if (isBlacklistedRef.current(dev.address)) return
                 if (hideMayhem && newpair.is_mayhem_mode) return
@@ -513,35 +530,39 @@ export function useSparkTokens() {
                     return
                 }
 
-                // funding filters
-                if (fundingEnabled) {
-                    if (minFundingAmount > 0) {
-                        if (!dev.funding || dev.funding.amount < minFundingAmount) return
-                    }
-                    if (maxFundingAmount > 0) {
-                        if (!dev.funding || dev.funding.amount > maxFundingAmount) return
-                    }
-                    if (maxFundingAge > 0 && dev.funding && dev.funding.funded_at > 0) {
+                // funding filters (skip entirely if dev has no funding data)
+                if (fundingEnabled && dev.funding) {
+                    if (minFundingAmount > 0 && dev.funding.amount < minFundingAmount) return
+                    if (maxFundingAmount > 0 && dev.funding.amount > maxFundingAmount) return
+                    if (maxFundingAge > 0 && dev.funding.funded_at > 0) {
                         const ageMs = Date.now() - dev.funding.funded_at
                         if (ageMs > maxFundingAge * 3_600_000) return
                     }
                 }
 
+                // only-community mode: drop tokens without X community attached
+                if (onlyCommunity && !metadata?.xcommunity) return
+
                 // community / creator filters (only apply when community is attached)
                 if (metadata?.xcommunity) {
                     if (communityEnabled) {
-                        if (minCommunityMembers > 0 && metadata.xcommunity.member_count < minCommunityMembers) return
-                        if (maxCommunityMembers > 0 && metadata.xcommunity.member_count > maxCommunityMembers) return
-                        if (minCreatorFollowers > 0 && metadata.xcommunity.creator) {
-                            if (metadata.xcommunity.creator.followers_count < minCreatorFollowers) return
+                        if (minCommunityMembers > 0 && metadata.xcommunity.members < minCommunityMembers) return
+                        if (maxCommunityMembers > 0 && metadata.xcommunity.members > maxCommunityMembers) return
+                        if (metadata.xcommunity.creator) {
+                            if (minCreatorFollowers > 0 && metadata.xcommunity.creator.followers < minCreatorFollowers) return
+                            if (maxCreatorFollowers > 0 && metadata.xcommunity.creator.followers > maxCreatorFollowers) return
+                            if (maxCreatorAge > 0 && metadata.xcommunity.creator.joined_at > 0) {
+                                const ageMs = Date.now() - metadata.xcommunity.creator.joined_at
+                                if (ageMs > maxCreatorAge * 3_600_000) return
+                            }
                         }
                         if (maxCommunityAge > 0 && metadata.xcommunity.created_at > 0) {
                             const ageMs = Date.now() - metadata.xcommunity.created_at
                             if (ageMs > maxCommunityAge * 3_600_000) return
                         }
                     }
-                    if (metadata.xcommunity.creator?.screen_name) {
-                        if (isCreatorBlacklistedRef.current(metadata.xcommunity.creator.screen_name)) return
+                    if (metadata.xcommunity.creator?.username) {
+                        if (isCreatorBlacklistedRef.current(metadata.xcommunity.creator.username)) return
                     }
                 }
             }
