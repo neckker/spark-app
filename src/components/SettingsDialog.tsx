@@ -45,6 +45,9 @@ import {
     Zap,
 } from 'lucide-react'
 
+import pumpIcon   from '@/assets/pump.svg'
+import mayhemIcon from '@/assets/mayhem.svg'
+import bonkIcon   from '@/assets/bonk.svg'
 import axiomIcon from '@/assets/terminals/axiom.svg'
 import padreIcon from '@/assets/terminals/padre.svg'
 import gmgnIcon from '@/assets/terminals/gmgn.svg'
@@ -390,7 +393,9 @@ function MainTab({ settings, store }: {
     const [devMin,               setDevMin]               = React.useState(String(settings.devMin))
     const [devMax,               setDevMax]               = React.useState(String(settings.devMax))
     const [migration,            setMigration]            = React.useState(String(settings.migrationPct))
-    const [hideMayhem,           setHideMayhem]           = React.useState(settings.hideMayhem)
+    const [showPump,             setShowPump]              = React.useState(settings.showPump)
+    const [showMayhem,           setShowMayhem]            = React.useState(settings.showMayhem)
+    const [showBonk,             setShowBonk]              = React.useState(settings.showBonk)
     const [feesFilterEnabled,    setFeesFilterEnabled]    = React.useState(settings.feesFilterEnabled)
     const [feesFilterMode,       setFeesFilterMode]       = React.useState<FeesFilterMode>(settings.feesFilterMode)
     const [feesFilterValue,      setFeesFilterValue]      = React.useState(String(settings.feesFilterValue))
@@ -432,7 +437,9 @@ function MainTab({ settings, store }: {
         setDevMin(String(settings.devMin))
         setDevMax(String(settings.devMax))
         setMigration(String(settings.migrationPct))
-        setHideMayhem(settings.hideMayhem)
+        setShowPump(settings.showPump)
+        setShowMayhem(settings.showMayhem)
+        setShowBonk(settings.showBonk)
         setFeesFilterEnabled(settings.feesFilterEnabled)
         setFeesFilterMode(settings.feesFilterMode)
         setFeesFilterValue(String(settings.feesFilterValue))
@@ -521,7 +528,9 @@ function MainTab({ settings, store }: {
                 migrationPct:        migValue,
                 migrationEnabled,
                 lastTokenMigrated,
-                hideMayhem,
+                showPump,
+                showMayhem,
+                showBonk,
                 feesFilterEnabled,
                 feesFilterMode,
                 feesFilterValue:     fees.ok ? fees.value : 1,
@@ -570,7 +579,7 @@ function MainTab({ settings, store }: {
             return
         }
         autoSave()
-    }, [devMin, devMax, devHoldEnabled, migration, migrationEnabled, lastTokenMigrated, hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge, communityEnabled, onlyCommunity, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCreatorFollowers, maxCommunityAge, maxCreatorAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
+    }, [devMin, devMax, devHoldEnabled, migration, migrationEnabled, lastTokenMigrated, showPump, showMayhem, showBonk, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge, communityEnabled, onlyCommunity, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCreatorFollowers, maxCommunityAge, maxCreatorAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
 
     return (
         <div className='space-y-4'>
@@ -684,13 +693,36 @@ function MainTab({ settings, store }: {
                     {/* ── TOKEN FILTERS ── */}
                     <SectionLabel>Token Filters</SectionLabel>
 
-                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5'>
-                        <RowSwitch
-                            label='Hide Mayhem Tokens'
-                            description='Skip pump.fun tokens launched in Mayhem mode'
-                            checked={hideMayhem}
-                            onCheckedChange={setHideMayhem}
-                        />
+                    <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-2'>
+                        <div className='flex items-center justify-between'>
+                            <div>
+                                <p className='text-sm font-medium text-white'>Protocols</p>
+                                <p className='text-xs text-muted'>Show or hide tokens by launch protocol</p>
+                            </div>
+                        </div>
+                        <div className='grid grid-cols-3 gap-2'>
+                            {([
+                                { key: 'pump',    icon: pumpIcon,   label: 'Pump',    active: showPump,    set: setShowPump,    color: '#22c55e' },
+                                { key: 'mayhem',  icon: mayhemIcon, label: 'Mayhem',  active: showMayhem,  set: setShowMayhem,  color: '#ef4444' },
+                                { key: 'bonk',    icon: bonkIcon,   label: 'Bonk',    active: showBonk,    set: setShowBonk,    color: '#d97706' },
+                            ] as const).map(p => (
+                                <button
+                                    key={p.key}
+                                    type='button'
+                                    onClick={() => p.set(v => !v)}
+                                    className='flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-all cursor-pointer'
+                                    style={{
+                                        backgroundColor: `${p.color}15`,
+                                        color: p.color,
+                                        boxShadow: `inset 0 0 0 1px ${p.color}40`,
+                                        opacity: p.active ? 1 : 0.35,
+                                    }}
+                                >
+                                    <img src={p.icon} alt={p.label} className='h-4 w-4' draggable={false} />
+                                    {p.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-2.5 space-y-3'>

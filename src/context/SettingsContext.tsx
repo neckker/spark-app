@@ -19,8 +19,10 @@ export interface Settings {
     terminal: Terminal
     uiScale: number
     openMode: OpenMode
-    // token filters
-    hideMayhem: boolean
+    // protocol filters (true = show, false = hide)
+    showPump: boolean
+    showMayhem: boolean
+    showBonk: boolean
     feesFilterEnabled: boolean
     feesFilterMode: FeesFilterMode
     feesFilterValue: number
@@ -55,7 +57,9 @@ export const DEFAULT_SETTINGS: Settings = {
     openMode: 'new-tab',
     terminal: 'axiom',
     uiScale: 100,
-    hideMayhem: false,
+    showPump: true,
+    showMayhem: true,
+    showBonk: true,
     feesFilterEnabled: false,
     feesFilterMode: 'total',
     feesFilterValue: 1,
@@ -189,7 +193,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             const openMode           = (await store.get<OpenMode>('openMode'))         ?? DEFAULT_SETTINGS.openMode
             const terminal           = (await store.get<Terminal>('terminal'))         ?? DEFAULT_SETTINGS.terminal
             const uiScale            = (await store.get<number>('uiScale'))            ?? DEFAULT_SETTINGS.uiScale
-            const hideMayhem         = (await store.get<boolean>('hideMayhem'))        ?? DEFAULT_SETTINGS.hideMayhem
+            const showPump           = (await store.get<boolean>('showPump'))           ?? DEFAULT_SETTINGS.showPump
+            const showMayhem         = (await store.get<boolean>('showMayhem'))         ?? DEFAULT_SETTINGS.showMayhem
+            const showBonk           = (await store.get<boolean>('showBonk'))           ?? DEFAULT_SETTINGS.showBonk
             const feesFilterEnabled  = (await store.get<boolean>('feesFilterEnabled')) ?? DEFAULT_SETTINGS.feesFilterEnabled
             const feesFilterMode     = (await store.get<FeesFilterMode>('feesFilterMode')) ?? DEFAULT_SETTINGS.feesFilterMode
             const feesFilterValue    = (await store.get<number>('feesFilterValue'))    ?? DEFAULT_SETTINGS.feesFilterValue
@@ -228,7 +234,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             setSettings({
                 devMin, devMax, devHoldEnabled, migrationPct, migrationEnabled, lastTokenMigrated,
                 openInBrowser, openMode, terminal, uiScale,
-                hideMayhem, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal,
+                showPump, showMayhem, showBonk, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal,
                 fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge,
                 soundEnabled, soundVolume,
                 communityEnabled, onlyCommunity, minCommunityMembers, maxCommunityMembers,

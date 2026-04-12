@@ -292,7 +292,9 @@ export function useSparkTokens() {
         migrationPct: settings.migrationPct,
         migrationEnabled: settings.migrationEnabled,
         lastTokenMigrated: settings.lastTokenMigrated,
-        hideMayhem: settings.hideMayhem,
+        showPump: settings.showPump,
+        showMayhem: settings.showMayhem,
+        showBonk: settings.showBonk,
         feesFilterEnabled: settings.feesFilterEnabled,
         feesFilterMode: settings.feesFilterMode,
         feesFilterValue: settings.feesFilterValue,
@@ -331,7 +333,9 @@ export function useSparkTokens() {
             migrationPct: settings.migrationPct,
             migrationEnabled: settings.migrationEnabled,
             lastTokenMigrated: settings.lastTokenMigrated,
-            hideMayhem: settings.hideMayhem,
+            showPump: settings.showPump,
+        showMayhem: settings.showMayhem,
+        showBonk: settings.showBonk,
             feesFilterEnabled: settings.feesFilterEnabled,
             feesFilterMode: settings.feesFilterMode,
             feesFilterValue: settings.feesFilterValue,
@@ -356,7 +360,9 @@ export function useSparkTokens() {
         settings.migrationPct,
         settings.migrationEnabled,
         settings.lastTokenMigrated,
-        settings.hideMayhem,
+        settings.showPump,
+        settings.showMayhem,
+        settings.showBonk,
         settings.feesFilterEnabled,
         settings.feesFilterMode,
         settings.feesFilterValue,
@@ -494,7 +500,9 @@ export function useSparkTokens() {
                     migrationPct,
                     migrationEnabled,
                     lastTokenMigrated,
-                    hideMayhem,
+                    showPump,
+                    showMayhem,
+                    showBonk,
                     feesFilterEnabled,
                     feesFilterMode,
                     feesFilterValue,
@@ -524,7 +532,10 @@ export function useSparkTokens() {
                     if (lastTokenMigrated && lastTokens.length > 0 && !lastTokens[0].is_migrated) return
                 }
                 if (isBlacklistedRef.current(dev.address)) return
-                if (hideMayhem && newpair.is_mayhem_mode) return
+                // protocol filters
+                if (newpair.protocol === 'pump' && newpair.is_mayhem_mode && !showMayhem) return
+                if (newpair.protocol === 'pump' && !newpair.is_mayhem_mode && !showPump) return
+                if (newpair.protocol === 'bonk' && !showBonk) return
 
                 if (!passesFeeFilter(lastTokens, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal)) {
                     return
