@@ -1,6 +1,8 @@
 import React from 'react'
 import toast from 'react-hot-toast'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { open, save } from '@tauri-apps/plugin-dialog'
+import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { useDebouncedCallback } from 'use-debounce'
 
 import {
@@ -20,10 +22,15 @@ import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import {
     useSettings,
+    DEFAULT_SETTINGS,
     type Terminal,
     type FeesTerminal,
     type OpenMode,
     type FeesFilterMode,
+    type Settings,
+    type WalletLabels,
+    type CreatorLabels,
+    type CreatorBlacklist,
 } from '@/context/SettingsContext'
 import { useAuth } from '@/context/AuthContext'
 import http from '@/lib/http'
@@ -43,6 +50,9 @@ import {
     X,
     Info,
     Zap,
+    Download,
+    Upload,
+    ClipboardCopy,
 } from 'lucide-react'
 
 import pumpIcon   from '@/assets/pump.svg'
@@ -380,7 +390,7 @@ function FeesTerminalPicker({
 
 // --- main tab ---
 
-type MainView = 'filters' | 'app'
+type MainView = 'filters' | 'app' | 'config'
 
 function MainTab({ settings, store }: {
     settings: ReturnType<typeof useSettings>['settings']
@@ -585,7 +595,7 @@ function MainTab({ settings, store }: {
         <div className='space-y-4'>
             <div className='px-1'>
                 <div className='flex gap-1 p-0.5 rounded-md bg-white/5 ring-1 ring-white/8'>
-                    {(['filters', 'app'] as MainView[]).map(v => (
+                    {(['filters', 'app', 'config'] as MainView[]).map(v => (
                         <button
                             key={v}
                             type='button'
@@ -595,7 +605,7 @@ function MainTab({ settings, store }: {
                                 view === v ? 'bg-white/10 text-white' : 'text-muted hover:text-zinc-300',
                             )}
                         >
-                            {v === 'filters' ? 'Filters' : 'Application'}
+                            {v === 'filters' ? 'Filters' : v === 'app' ? 'Application' : 'Config'}
                         </button>
                     ))}
                 </div>
@@ -937,6 +947,396 @@ function MainTab({ settings, store }: {
                     </div>
                 </div>
             )}
+
+            {view === 'config' && (
+                <ConfigView settings={settings} store={store} />
+            )}
+        </div>
+    )
+}
+
+// --- config view ---
+
+function buildExportConfig(
+    settings: Settings,
+    walletLabels: WalletLabels,
+    creatorLabels: CreatorLabels,
+    blacklist: Set<string>,
+    creatorBlacklist: CreatorBlacklist,
+    devWhitelist: Set<string>,
+    creatorWhitelist: CreatorBlacklist,
+) {
+    return {
+        app: {
+            openInBrowser: settings.openInBrowser,
+            openMode: settings.openMode,
+            terminal: settings.terminal,
+            uiScale: settings.uiScale,
+            soundEnabled: settings.soundEnabled,
+            soundVolume: settings.soundVolume,
+        },
+        filters: {
+            devHold: {
+                devMin: settings.devMin,
+                devMax: settings.devMax,
+                devHoldEnabled: settings.devHoldEnabled,
+            },
+            migration: {
+                migrationPct: settings.migrationPct,
+                migrationEnabled: settings.migrationEnabled,
+                lastTokenMigrated: settings.lastTokenMigrated,
+            },
+            protocols: {
+                showPump: settings.showPump,
+                showMayhem: settings.showMayhem,
+                showBonk: settings.showBonk,
+            },
+            fees: {
+                feesFilterEnabled: settings.feesFilterEnabled,
+                feesFilterMode: settings.feesFilterMode,
+                feesFilterValue: settings.feesFilterValue,
+                feesTerminal: settings.feesTerminal,
+            },
+            funding: {
+                fundingEnabled: settings.fundingEnabled,
+                minFundingAmount: settings.minFundingAmount,
+                maxFundingAmount: settings.maxFundingAmount,
+                maxFundingAge: settings.maxFundingAge,
+            },
+            community: {
+                communityEnabled: settings.communityEnabled,
+                onlyCommunity: settings.onlyCommunity,
+                minCommunityMembers: settings.minCommunityMembers,
+                maxCommunityMembers: settings.maxCommunityMembers,
+                minCreatorFollowers: settings.minCreatorFollowers,
+                maxCreatorFollowers: settings.maxCreatorFollowers,
+                maxCommunityAge: settings.maxCommunityAge,
+                maxCreatorAge: settings.maxCreatorAge,
+            },
+        },
+        labels: {
+            wallets: walletLabels,
+            creators: creatorLabels,
+        },
+        blacklist: {
+            wallets: [...blacklist],
+            creators: creatorBlacklist,
+        },
+        whitelist: {
+            wallets: [...devWhitelist],
+            creators: creatorWhitelist,
+        },
+    }
+}
+
+function buildReferenceConfig() {
+    const defaults = DEFAULT_SETTINGS
+    return {
+        app: {
+            openInBrowser: defaults.openInBrowser,
+            openMode: defaults.openMode,
+            terminal: defaults.terminal,
+            uiScale: defaults.uiScale,
+            soundEnabled: defaults.soundEnabled,
+            soundVolume: defaults.soundVolume,
+        },
+        filters: {
+            devHold: {
+                devMin: defaults.devMin,
+                devMax: defaults.devMax,
+                devHoldEnabled: defaults.devHoldEnabled,
+            },
+            migration: {
+                migrationPct: defaults.migrationPct,
+                migrationEnabled: defaults.migrationEnabled,
+                lastTokenMigrated: defaults.lastTokenMigrated,
+            },
+            protocols: {
+                showPump: defaults.showPump,
+                showMayhem: defaults.showMayhem,
+                showBonk: defaults.showBonk,
+            },
+            fees: {
+                feesFilterEnabled: defaults.feesFilterEnabled,
+                feesFilterMode: defaults.feesFilterMode,
+                feesFilterValue: defaults.feesFilterValue,
+                feesTerminal: defaults.feesTerminal,
+            },
+            funding: {
+                fundingEnabled: defaults.fundingEnabled,
+                minFundingAmount: defaults.minFundingAmount,
+                maxFundingAmount: defaults.maxFundingAmount,
+                maxFundingAge: defaults.maxFundingAge,
+            },
+            community: {
+                communityEnabled: defaults.communityEnabled,
+                onlyCommunity: defaults.onlyCommunity,
+                minCommunityMembers: defaults.minCommunityMembers,
+                maxCommunityMembers: defaults.maxCommunityMembers,
+                minCreatorFollowers: defaults.minCreatorFollowers,
+                maxCreatorFollowers: defaults.maxCreatorFollowers,
+                maxCommunityAge: defaults.maxCommunityAge,
+                maxCreatorAge: defaults.maxCreatorAge,
+            },
+        },
+        labels: {
+            wallets: { '7xKXp9m...9mPq': 'whale', '3nFtk2L...kL2v': 'team' },
+            creators: {
+                alpha_caller: { label: 'Alpha', color: '#7dd3fc', screenName: 'alpha_caller' },
+            },
+        },
+        blacklist: {
+            wallets: ['5bAdxY9...xY9z'],
+            creators: { scammer_dev: 'Scammer' },
+        },
+        whitelist: {
+            wallets: ['9kMnPq2...Pq2r'],
+            creators: { trusted_dev: 'Trusted' },
+        },
+    }
+}
+
+type ConfigJson = ReturnType<typeof buildExportConfig>
+
+function applyImportConfig(
+    config: ConfigJson,
+    patch: (partial: Partial<Settings>) => Promise<void>,
+    store: NonNullable<ReturnType<typeof useSettings>['store']>,
+) {
+    const flat: Partial<Settings> = {}
+
+    if (config.app) {
+        if (typeof config.app.openInBrowser === 'boolean') flat.openInBrowser = config.app.openInBrowser
+        if (typeof config.app.openMode === 'string') flat.openMode = config.app.openMode as OpenMode
+        if (typeof config.app.terminal === 'string') flat.terminal = config.app.terminal as Terminal
+        if (typeof config.app.uiScale === 'number') flat.uiScale = config.app.uiScale
+        if (typeof config.app.soundEnabled === 'boolean') flat.soundEnabled = config.app.soundEnabled
+        if (typeof config.app.soundVolume === 'number') flat.soundVolume = config.app.soundVolume
+    }
+
+    if (config.filters) {
+        const f = config.filters
+        if (f.devHold) {
+            if (typeof f.devHold.devMin === 'number') flat.devMin = f.devHold.devMin
+            if (typeof f.devHold.devMax === 'number') flat.devMax = f.devHold.devMax
+            if (typeof f.devHold.devHoldEnabled === 'boolean') flat.devHoldEnabled = f.devHold.devHoldEnabled
+        }
+        if (f.migration) {
+            if (typeof f.migration.migrationPct === 'number') flat.migrationPct = f.migration.migrationPct
+            if (typeof f.migration.migrationEnabled === 'boolean') flat.migrationEnabled = f.migration.migrationEnabled
+            if (typeof f.migration.lastTokenMigrated === 'boolean') flat.lastTokenMigrated = f.migration.lastTokenMigrated
+        }
+        if (f.protocols) {
+            if (typeof f.protocols.showPump === 'boolean') flat.showPump = f.protocols.showPump
+            if (typeof f.protocols.showMayhem === 'boolean') flat.showMayhem = f.protocols.showMayhem
+            if (typeof f.protocols.showBonk === 'boolean') flat.showBonk = f.protocols.showBonk
+        }
+        if (f.fees) {
+            if (typeof f.fees.feesFilterEnabled === 'boolean') flat.feesFilterEnabled = f.fees.feesFilterEnabled
+            if (typeof f.fees.feesFilterMode === 'string') flat.feesFilterMode = f.fees.feesFilterMode as FeesFilterMode
+            if (typeof f.fees.feesFilterValue === 'number') flat.feesFilterValue = f.fees.feesFilterValue
+            if (typeof f.fees.feesTerminal === 'string') flat.feesTerminal = f.fees.feesTerminal as FeesTerminal
+        }
+        if (f.funding) {
+            if (typeof f.funding.fundingEnabled === 'boolean') flat.fundingEnabled = f.funding.fundingEnabled
+            if (typeof f.funding.minFundingAmount === 'number') flat.minFundingAmount = f.funding.minFundingAmount
+            if (typeof f.funding.maxFundingAmount === 'number') flat.maxFundingAmount = f.funding.maxFundingAmount
+            if (typeof f.funding.maxFundingAge === 'number') flat.maxFundingAge = f.funding.maxFundingAge
+        }
+        if (f.community) {
+            if (typeof f.community.communityEnabled === 'boolean') flat.communityEnabled = f.community.communityEnabled
+            if (typeof f.community.onlyCommunity === 'boolean') flat.onlyCommunity = f.community.onlyCommunity
+            if (typeof f.community.minCommunityMembers === 'number') flat.minCommunityMembers = f.community.minCommunityMembers
+            if (typeof f.community.maxCommunityMembers === 'number') flat.maxCommunityMembers = f.community.maxCommunityMembers
+            if (typeof f.community.minCreatorFollowers === 'number') flat.minCreatorFollowers = f.community.minCreatorFollowers
+            if (typeof f.community.maxCreatorFollowers === 'number') flat.maxCreatorFollowers = f.community.maxCreatorFollowers
+            if (typeof f.community.maxCommunityAge === 'number') flat.maxCommunityAge = f.community.maxCommunityAge
+            if (typeof f.community.maxCreatorAge === 'number') flat.maxCreatorAge = f.community.maxCreatorAge
+        }
+    }
+
+    const promises: Promise<void>[] = []
+
+    if (Object.keys(flat).length > 0) promises.push(patch(flat))
+
+    if (config.labels) {
+        const labels: { wallets?: Record<string, string>; creators?: Record<string, unknown> } = {}
+        if (config.labels.wallets && typeof config.labels.wallets === 'object') labels.wallets = config.labels.wallets
+        if (config.labels.creators && typeof config.labels.creators === 'object') labels.creators = config.labels.creators
+        if (Object.keys(labels).length > 0) {
+            promises.push(
+                store.get<{ wallets: Record<string, string>; creators: Record<string, unknown> }>('labels')
+                    .then(existing => store.set('labels', { ...existing, ...labels }))
+                    .then(() => store.save())
+            )
+        }
+    }
+
+    if (config.blacklist) {
+        const bl: { wallets?: string[]; creators?: Record<string, string> } = {}
+        if (Array.isArray(config.blacklist.wallets)) bl.wallets = config.blacklist.wallets
+        if (config.blacklist.creators && typeof config.blacklist.creators === 'object') bl.creators = config.blacklist.creators
+        if (Object.keys(bl).length > 0) {
+            promises.push(
+                store.get<{ wallets: string[]; creators: Record<string, string> }>('blacklist')
+                    .then(existing => store.set('blacklist', { ...existing, ...bl }))
+                    .then(() => store.save())
+            )
+        }
+    }
+
+    if (config.whitelist) {
+        const wl: { wallets?: string[]; creators?: Record<string, string> } = {}
+        if (Array.isArray(config.whitelist.wallets)) wl.wallets = config.whitelist.wallets
+        if (config.whitelist.creators && typeof config.whitelist.creators === 'object') wl.creators = config.whitelist.creators
+        if (Object.keys(wl).length > 0) {
+            promises.push(
+                store.get<{ wallets: string[]; creators: Record<string, string> }>('whitelist')
+                    .then(existing => store.set('whitelist', { ...existing, ...wl }))
+                    .then(() => store.save())
+            )
+        }
+    }
+
+    return Promise.all(promises)
+}
+
+function ConfigView({ settings, store }: {
+    settings: Settings
+    store: ReturnType<typeof useSettings>['store']
+}) {
+    const {
+        patch, walletLabels, creatorLabels,
+        blacklist, creatorBlacklist,
+        devWhitelist, creatorWhitelist,
+    } = useSettings()
+
+    const handleExport = async () => {
+        if (!store) return
+        const config = buildExportConfig(
+            settings, walletLabels, creatorLabels,
+            blacklist, creatorBlacklist,
+            devWhitelist, creatorWhitelist,
+        )
+        const path = await save({
+            title: 'Export Config',
+            defaultPath: 'spark-config.json',
+            filters: [{ name: 'JSON', extensions: ['json'] }],
+        })
+        if (!path) return
+        await writeTextFile(path, JSON.stringify(config, null, 2))
+        toast.success('Config exported')
+    }
+
+    const handleImport = async () => {
+        if (!store) return
+        const path = await open({
+            title: 'Import Config',
+            multiple: false,
+            filters: [{ name: 'JSON', extensions: ['json'] }],
+        })
+        if (!path) return
+        try {
+            const text = await readTextFile(path)
+            const config = JSON.parse(text) as ConfigJson
+            await applyImportConfig(config, patch, store)
+            toast.success('Config imported - restart app to apply all changes')
+        } catch {
+            toast.error('Failed to parse config file')
+        }
+    }
+
+    const handleCopyConfig = async () => {
+        const config = buildExportConfig(
+            settings, walletLabels, creatorLabels,
+            blacklist, creatorBlacklist,
+            devWhitelist, creatorWhitelist,
+        )
+        await navigator.clipboard.writeText(JSON.stringify(config, null, 2))
+        toast.success('Config copied')
+    }
+
+    const handleCopyReference = async () => {
+        const ref = buildReferenceConfig()
+        const prompt = `You are helping the user configure their Spark desktop app. Below is the reference config with all available keys, default values, and example data for lists.
+
+The user will paste their current config - compare it against the reference, ask what they want to change, and output the updated JSON ready to import back into the app.
+
+## Reference config (all keys + defaults)
+
+\`\`\`json
+${JSON.stringify(ref, null, 2)}
+\`\`\`
+
+## User's current config
+
+\`\`\`json
+<PASTE YOUR CONFIG HERE>
+\`\`\`
+
+Instructions:
+- Only modify values the user explicitly asks to change
+- Preserve all existing labels, blacklist, and whitelist entries unless told otherwise
+- Output the full updated config as a single JSON code block
+- Keep the same categorized structure (app, filters, labels, blacklist, whitelist)`
+
+        await navigator.clipboard.writeText(prompt)
+        toast.success('AI prompt copied to clipboard')
+    }
+
+    return (
+        <div className='space-y-4 px-1 py-2'>
+            <SectionLabel>Export</SectionLabel>
+
+            <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-3 space-y-3'>
+                <div>
+                    <div className='text-sm font-medium text-white'>Export Config</div>
+                    <div className='text-xs text-muted mt-0.5'>Save or copy your current settings</div>
+                </div>
+                <div className='grid grid-cols-2 gap-2'>
+                    <Button className='w-full' onClick={handleExport}>
+                        <Download className='h-4 w-4' />
+                        Save File
+                    </Button>
+                    <Button className='w-full' variant='ghost' onClick={handleCopyConfig}>
+                        <Copy className='h-4 w-4' />
+                        Copy JSON
+                    </Button>
+                </div>
+            </div>
+
+            <SectionLabel>Import</SectionLabel>
+
+            <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-3 space-y-3'>
+                <div>
+                    <div className='text-sm font-medium text-white'>Import Config</div>
+                    <div className='text-xs text-muted mt-0.5'>Load settings from a JSON file</div>
+                </div>
+                <Button className='w-full' onClick={handleImport}>
+                    <Upload className='h-4 w-4' />
+                    Import Config
+                </Button>
+            </div>
+
+            <SectionLabel>AI Assistant</SectionLabel>
+
+            <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-3 space-y-3'>
+                <div>
+                    <div className='text-sm font-medium text-white'>AI Config Editor</div>
+                    <div className='text-xs text-muted mt-0.5'>Edit your config with help of any AI model</div>
+                </div>
+                <div className='flex items-start gap-2 rounded-md px-2.5 py-1.5 bg-violet-500/8 ring-1 ring-violet-500/20'>
+                    <Info className='h-3.5 w-3.5 text-violet-400 shrink-0 mt-0.5' />
+                    <p className='text-[11px] text-violet-200/70'>
+                        Copies a ready-made prompt with a <span className='font-semibold text-white'>reference config</span> and a placeholder for your current settings.
+                        Paste it into any AI chat, add your config via <span className='font-semibold text-white'>Copy JSON</span> above, describe desired changes - and import the result back.
+                    </p>
+                </div>
+                <Button className='w-full' onClick={handleCopyReference}>
+                    <ClipboardCopy className='h-4 w-4' />
+                    Copy AI Prompt
+                </Button>
+            </div>
         </div>
     )
 }
@@ -1425,12 +1825,12 @@ function LabelsTab() {
     const [search, setSearch] = React.useState('')
     const [showForm, setShowForm] = React.useState(false)
 
-    // manual add state — wallets
+    // manual add state - wallets
     const [walletAddrInput, setWalletAddrInput] = React.useState('')
     const [walletLabelInput, setWalletLabelInput] = React.useState('')
     const [walletError, setWalletError] = React.useState<string | null>(null)
 
-    // manual add state — creators
+    // manual add state - creators
     const [creatorNameInput, setCreatorNameInput] = React.useState('')
     const [creatorLabelInput, setCreatorLabelInput] = React.useState('')
     const [creatorError, setCreatorError] = React.useState<string | null>(null)
@@ -1655,11 +2055,11 @@ function BlacklistTab() {
     const [search, setSearch] = React.useState('')
     const [showForm, setShowForm] = React.useState(false)
 
-    // manual add state — wallets
+    // manual add state - wallets
     const [walletInput, setWalletInput] = React.useState('')
     const [walletError, setWalletError] = React.useState<string | null>(null)
 
-    // manual add state — creators
+    // manual add state - creators
     const [creatorInput, setCreatorInput] = React.useState('')
     const [creatorError, setCreatorError] = React.useState<string | null>(null)
 

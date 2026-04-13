@@ -63,7 +63,7 @@ export default function Updater() {
         runUpdate()
     }, [])
 
-    // Nothing to show — either still checking or no update
+    // Nothing to show - either still checking or no update
     if (phase === 'checking' && progress === null && !error) return null
     if (progress === null && !error) return null
 

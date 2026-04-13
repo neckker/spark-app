@@ -99,7 +99,7 @@ jobs:
           BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle"
           mkdir -p artifacts
 
-          # Updater artifact — rename to match tauri-action convention
+          # Updater artifact - rename to match tauri-action convention
           cp "$BUNDLE/macos/spark.app.tar.gz"     "artifacts/spark_universal.app.tar.gz"
           cp "$BUNDLE/macos/spark.app.tar.gz.sig" "artifacts/spark_universal.app.tar.gz.sig"
 
@@ -216,7 +216,7 @@ jobs:
           WIN_NSIS="$(basename artifacts/*-setup.exe)"
           WIN_NSIS_SIG="$(cat "artifacts/${WIN_NSIS}.sig")"
 
-          # Build latest.json — matches tauri-action format exactly
+          # Build latest.json - matches tauri-action format exactly
           jq -n \
             --arg version    "$VERSION" \
             --arg pub_date   "$PUB_DATE" \

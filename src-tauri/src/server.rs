@@ -83,7 +83,7 @@ fn drain_control_frames(ws: &mut tungstenite::WebSocket<std::net::TcpStream>) ->
                 if e.kind() == std::io::ErrorKind::WouldBlock
                     || e.kind() == std::io::ErrorKind::TimedOut =>
             {
-                return true; // No more data — expected
+                return true; // No more data - expected
             }
             Err(_) => return false,
         }

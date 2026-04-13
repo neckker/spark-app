@@ -655,8 +655,8 @@ export function TokenRow({
     }), [metadata?.website, metadata?.telegram])
 
     // creator label for community hover card badge
-    const creatorLabelData = metadata?.xcommunity?.creator
-        ? creatorLabels[metadata.xcommunity.creator.id]
+    const creatorLabelData = metadata?.xcommunity?.creator?.username
+        ? creatorLabels[metadata.xcommunity.creator.username.toLowerCase()]
         : undefined
 
     const protocol   = token.protocol

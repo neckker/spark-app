@@ -368,7 +368,7 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
         )
     }
 
-    // После этой точки TypeScript знает: status — ActiveLicenseStatus
+    // После этой точки TypeScript знает: status - ActiveLicenseStatus
     const cfg  = getScreenCfg(status, expiresAt)
     const Icon = cfg.icon
 
@@ -380,7 +380,7 @@ export default function LicenseGate({ children }: { children: React.ReactNode })
         }
         setInputError(null)
         setAttempted(true)
-        setJustActivated(true)   // выставляем заранее — если активация провалится,
+        setJustActivated(true)   // выставляем заранее - если активация провалится,
                                  // status не станет 'active' и экран реферала не покажется
         await activate(trimmed)
     }
