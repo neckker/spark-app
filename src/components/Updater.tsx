@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { Download, RotateCw, AlertTriangle } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
-type Phase = 'checking' | 'downloading' | 'installing' | 'error'
+type Phase = 'checking' | 'ready' | 'downloading' | 'installing' | 'error'
 
-export default function Updater() {
+export default function UpdateGate({ children }: { children: React.ReactNode }) {
     const [progress, setProgress] = useState<number | null>(null)
     const [version, setVersion] = useState('')
     const [phase, setPhase] = useState<Phase>('checking')
@@ -20,6 +21,7 @@ export default function Updater() {
 
                 if (!update) {
                     console.log('[Updater] no update available (current version is latest)')
+                    setPhase('ready')
                     return
                 }
 
@@ -63,72 +65,59 @@ export default function Updater() {
         runUpdate()
     }, [])
 
-    // Nothing to show - either still checking or no update
-    if (phase === 'checking' && progress === null && !error) return null
-    if (progress === null && !error) return null
+    // Checking — show spinner
+    if (phase === 'checking') {
+        return (
+            <div className='min-h-screen bg-main flex items-center justify-center'>
+                <Spinner className='h-6 w-6 text-zinc-400' />
+            </div>
+        )
+    }
 
-    const Icon =
-        phase === 'error'
-            ? AlertTriangle
-            : phase === 'installing'
-                ? RotateCw
-                : Download
+    // No update or check failed — pass through to children (license gate)
+    if (phase === 'ready' || phase === 'error') {
+        return <>{children}</>
+    }
+
+    // Downloading / installing — show update UI
+    const Icon = phase === 'installing' ? RotateCw : Download
 
     return (
-        <div
-            className={cn(
-                'fixed bottom-4 left-1/2 -translate-x-1/2 z-50',
-                'bg-panel border rounded-xl',
-                'px-4 py-3 shadow-xl backdrop-blur-sm',
-                'min-w-64 max-w-96',
-                'animate-in fade-in slide-in-from-bottom-4 duration-300',
-                phase === 'error' ? 'border-destructive/50' : 'border-line'
-            )}
-        >
-            <div className='flex items-center gap-2 mb-2'>
-                <Icon
-                    className={cn(
-                        'h-4 w-4 shrink-0',
-                        phase === 'error'
-                            ? 'text-destructive'
-                            : 'text-accent',
-                        phase === 'installing' && 'animate-spin'
+        <div className='min-h-screen bg-main flex items-center justify-center p-6'>
+            <div className='w-full max-w-sm space-y-4'>
+                <div className='flex flex-col items-center gap-3 text-center'>
+                    <div className='h-14 w-14 rounded-2xl flex items-center justify-center bg-white/5 ring-1 ring-white/10'>
+                        <Icon className={cn('h-7 w-7 text-accent', phase === 'installing' && 'animate-spin')} />
+                    </div>
+                    <div>
+                        <h1 className='text-lg font-semibold text-white'>
+                            {phase === 'installing' ? 'Installing Update' : 'Downloading Update'}
+                        </h1>
+                        <p className='mt-1 text-sm text-muted'>
+                            {phase === 'installing'
+                                ? 'Restarting the app…'
+                                : 'A new version is available and will be installed automatically.'}
+                        </p>
+                    </div>
+                    {version && (
+                        <span className='inline-flex items-center h-6 px-2 rounded-md bg-accent/15 text-xs font-semibold text-accent'>
+                            v{version}
+                        </span>
                     )}
-                />
-                <span className={cn(
-                    'text-xs font-medium',
-                    phase === 'error' ? 'text-destructive' : 'text-muted'
-                )}>
-                    {phase === 'error'
-                        ? 'Update failed'
-                        : phase === 'downloading'
-                            ? 'Downloading update'
-                            : 'Installing, restarting\u2026'}
-                </span>
-                {version && (
-                    <span className='ml-auto inline-flex items-center h-5 px-1.5 rounded-md bg-accent/15 text-[11px] font-semibold text-accent'>
-                        v{version}
-                    </span>
-                )}
-            </div>
+                </div>
 
-            {phase === 'error' && error ? (
-                <p className='text-[11px] text-muted/80 break-all leading-relaxed'>
-                    {error}
-                </p>
-            ) : (
-                <>
-                    <div className='w-full bg-secondary rounded-full h-1.5 overflow-hidden'>
+                <div className='space-y-2'>
+                    <div className='w-full bg-secondary rounded-full h-2 overflow-hidden'>
                         <div
                             className='bg-accent h-full rounded-full transition-all duration-300 ease-out'
-                            style={{ width: `${progress}%` }}
+                            style={{ width: `${progress ?? 0}%` }}
                         />
                     </div>
-                    <p className='mt-1.5 text-right text-[11px] tabular-nums text-muted/60'>
-                        {progress}%
+                    <p className='text-right text-xs tabular-nums text-muted/60'>
+                        {progress ?? 0}%
                     </p>
-                </>
-            )}
+                </div>
+            </div>
         </div>
     )
 }
