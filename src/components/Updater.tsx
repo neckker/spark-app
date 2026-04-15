@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
-import { Download, RotateCw, AlertTriangle } from 'lucide-react'
+import { Download, RotateCw } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
@@ -11,7 +11,6 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
     const [progress, setProgress] = useState<number | null>(null)
     const [version, setVersion] = useState('')
     const [phase, setPhase] = useState<Phase>('checking')
-    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
         async function runUpdate() {
@@ -57,7 +56,6 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
             } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e)
                 console.error('[Updater] error:', msg)
-                setError(msg)
                 setPhase('error')
             }
         }
