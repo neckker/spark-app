@@ -18,7 +18,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -99,7 +99,7 @@ jobs:
           BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle"
           mkdir -p artifacts
 
-          # Updater artifact — rename to match tauri-action convention
+          # Updater artifact - rename to match tauri-action convention
           cp "$BUNDLE/macos/spark.app.tar.gz"     "artifacts/spark_universal.app.tar.gz"
           cp "$BUNDLE/macos/spark.app.tar.gz.sig" "artifacts/spark_universal.app.tar.gz.sig"
 
@@ -115,7 +115,7 @@ jobs:
           ls -lh artifacts/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: macos-artifacts
           path: artifacts/
@@ -126,7 +126,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -174,7 +174,7 @@ jobs:
           ls -lh artifacts/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: windows-artifacts
           path: artifacts/
@@ -186,7 +186,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
@@ -216,7 +216,7 @@ jobs:
           WIN_NSIS="$(basename artifacts/*-setup.exe)"
           WIN_NSIS_SIG="$(cat "artifacts/${WIN_NSIS}.sig")"
 
-          # Build latest.json — matches tauri-action format exactly
+          # Build latest.json - matches tauri-action format exactly
           jq -n \
             --arg version    "$VERSION" \
             --arg pub_date   "$PUB_DATE" \

@@ -32,12 +32,12 @@ import {
     Globe, Send,
     ChefHat, Coins, GitMerge, Percent,
     BadgeDollarSign, ChartNoAxesCombined, HandCoins,
-    Tag, Ban, Clock, Crown, Zap,
+    Tag, Ban, Clock, Crown, Zap, DatabaseZap,
     Feather, User, Users,
     Pencil, BadgeCheck, Check, X,
 } from 'lucide-react'
 
-import type { TokenCardModel, LastToken, Metadata, XCommunity } from '@/hooks/useSparkTokens'
+import type { TokenCardModel, LastToken, Metadata, XCommunity, DevInfo } from '@/hooks/useSparkTokens'
 import { useSettings } from '@/context/SettingsContext'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -62,6 +62,10 @@ function fmtAgo(tsMs: number): string {
     if (!tsMs) return ''
     try { return formatDistanceToNow(new Date(tsMs), { addSuffix: false }) }
     catch { return '' }
+}
+
+function truncAddr(addr: string): string {
+    return `${addr.slice(0, 4)}...${addr.slice(-4)}`
 }
 
 function fmtCount(n: number): string {
@@ -175,9 +179,9 @@ function CommunityCard({
                 className='w-72 bg-zinc-900/70 backdrop-blur border-line p-0 overflow-hidden'
             >
                 {/* banner */}
-                {community.banner && (
+                {community.banner_url && (
                     <div className='w-full overflow-hidden'>
-                        <img src={community.banner} alt='' className='w-full object-contain' draggable={false} />
+                        <img src={community.banner_url} alt='' className='w-full object-contain' draggable={false} />
                     </div>
                 )}
 
@@ -198,7 +202,7 @@ function CommunityCard({
                             )}
                             <span className='text-[10px] text-muted'>/</span>
                             <span className='text-[10px] text-muted'>
-                                {fmtCount(community.member_count)} members
+                                {fmtCount(community.members)} members
                             </span>
                             {community.created_at > 0 && (
                                 <>
@@ -235,7 +239,8 @@ function CreatorRow({ community }: { community: XCommunity }) {
     const [editValue, setEditValue] = useState('')
     const [editColor, setEditColor] = useState(DEFAULT_LABEL_COLOR)
 
-    const currentLabelData = creatorLabels[creator.id]
+    const screenKey = (creator.username ?? '').toLowerCase()
+    const currentLabelData = screenKey ? creatorLabels[screenKey] : undefined
 
     const startEdit = () => {
         setEditValue(currentLabelData?.label ?? creator.name ?? '')
@@ -245,26 +250,27 @@ function CreatorRow({ community }: { community: XCommunity }) {
 
     const saveEdit = async () => {
         const trimmed = editValue.trim()
-        if (!trimmed) return
-        await setCreatorLabel(creator.id, trimmed, editColor, creator.screen_name ?? '')
+        if (!trimmed || !creator.username) return
+        await setCreatorLabel(creator.username, trimmed, editColor)
         toast.success('Creator label saved')
         setEditing(false)
     }
 
     const onBlockCreator = async () => {
-        if (isCreatorBlacklisted(creator.id)) {
+        if (!creator.username) return
+        if (isCreatorBlacklisted(creator.username)) {
             toast.error('Already blocked')
             return
         }
-        await addCreatorToBlacklist(creator.id, creator.screen_name ?? '')
+        await addCreatorToBlacklist(creator.username)
         toast.success('Creator blocked')
     }
 
     return (
         <div className={`flex gap-2 ${editing ? 'items-center' : 'items-start'}`}>
-            {creator.avatar && (
+            {creator.avatar_url && (
                 <Avatar className='size-10 rounded-lg shrink-0'>
-                    <AvatarImage src={creator.avatar} className='rounded-lg object-cover' />
+                    <AvatarImage src={creator.avatar_url} className='rounded-lg object-cover' />
                     <AvatarFallback className='rounded-lg bg-white/5 text-[10px]'>
                         {(creator.name ?? '?').slice(0, 2)}
                     </AvatarFallback>
@@ -317,7 +323,7 @@ function CreatorRow({ community }: { community: XCommunity }) {
                             <span className='text-xs font-medium text-white truncate'>
                                 {currentLabelData?.label ?? creator.name ?? 'Unknown'}
                             </span>
-                            {creator.is_blue_verified && (
+                            {creator.is_verified && (
                                 <BadgeCheck className='size-3 text-sky-400' />
                             )}
                             <button
@@ -330,14 +336,14 @@ function CreatorRow({ community }: { community: XCommunity }) {
                             </button>
                         </div>
 
-                        {creator.screen_name && (
+                        {creator.username && (
                             <div className='flex items-center gap-1 mt-0.5'>
                                 <a
-                                    href={`https://x.com/${creator.screen_name}`}
+                                    href={`https://x.com/${creator.username}`}
                                     target='_blank' rel='noreferrer'
                                     className='text-xs text-muted hover:underline'
                                 >
-                                    @{creator.screen_name}
+                                    @{creator.username}
                                 </a>
                                 <button
                                     type='button'
@@ -354,10 +360,10 @@ function CreatorRow({ community }: { community: XCommunity }) {
 
                 <div className='flex items-center gap-2 mt-0.5'>
                     <span className='text-[10px] font-medium text-muted'>
-                        {fmtCount(creator.followers_count)} followers
+                        {fmtCount(creator.followers)} followers
                     </span>
                     <span className='text-[10px] font-medium text-muted'>
-                        {fmtCount(creator.following_count)} following
+                        {fmtCount(creator.following)} following
                     </span>
                     {creator.joined_at > 0 && (
                         <span className='text-[10px] font-medium text-indigo-400'>
@@ -367,6 +373,98 @@ function CreatorRow({ community }: { community: XCommunity }) {
                 </div>
             </div>
         </div>
+    )
+}
+
+// ─── Funding hover card ─────────────────────────────────────────────────────
+
+function FundingCard({
+    dev,
+    isBlacklisted,
+    devLabel,
+}: {
+    dev: DevInfo
+    isBlacklisted: boolean
+    devLabel: string | undefined
+}) {
+    const funding = dev.funding
+
+    const copyAddr = (addr: string) => {
+        navigator.clipboard.writeText(addr)
+        toast.success('Copied to clipboard')
+    }
+
+    return (
+        <HoverCard openDelay={10} closeDelay={100}>
+            <HoverCardTrigger asChild>
+                <span className='inline-flex items-center gap-1 text-muted text-xs font-medium uppercase tracking-wide cursor-pointer'>
+                    <ChefHat className='h-3.5 w-3.5' />
+                    {isBlacklisted
+                        ? <span className='text-rose-400 uppercase'>Banned</span>
+                        : devLabel
+                            ? <span className='text-sky-300 uppercase'>{devLabel}</span>
+                            : 'DEV'
+                    }
+                </span>
+            </HoverCardTrigger>
+            <HoverCardContent
+                side='bottom'
+                align='start'
+                className='w-56 bg-zinc-900/70 backdrop-blur border-line p-0 overflow-hidden'
+            >
+                {funding ? (
+                    <div className='px-3 py-2.5 space-y-2'>
+                        {/* wallets */}
+                        <div className='space-y-1'>
+                            <div className='flex items-center justify-between'>
+                                <span className='text-[11px] text-muted'>Dev</span>
+                                <span
+                                    onClick={() => copyAddr(dev.address)}
+                                    className='text-[11px] text-muted font-mono cursor-pointer hover:text-white transition-colors'
+                                >
+                                    {truncAddr(dev.address)}
+                                </span>
+                            </div>
+                            {funding.funding_wallet && (
+                                <div className='flex items-center justify-between'>
+                                    <span className='text-[11px] text-muted'>Funder</span>
+                                    <span
+                                        onClick={() => copyAddr(funding.funding_wallet!)}
+                                        className='text-[11px] text-muted font-mono cursor-pointer hover:text-white transition-colors'
+                                    >
+                                        {truncAddr(funding.funding_wallet)}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+
+                        <Separator className='opacity-30' />
+
+                        {/* amount & time */}
+                        <div className='space-y-1'>
+                            <div className='flex items-center justify-between'>
+                                <span className='text-[11px] text-muted'>Amount</span>
+                                <span className='text-[11px] text-violet-400 font-medium tabular-nums'>
+                                    {funding.amount} SOL
+                                </span>
+                            </div>
+                            {funding.funded_at > 0 && (
+                                <div className='flex items-center justify-between'>
+                                    <span className='text-[11px] text-muted'>When</span>
+                                    <span className='text-[11px] text-indigo-400 font-medium tabular-nums'>
+                                        {fmtAgo(funding.funded_at)} ago
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className='px-3 py-2.5'>
+                        <span className='text-[11px] text-muted'>No funding data</span>
+                    </div>
+                )}
+            </HoverCardContent>
+        </HoverCard>
     )
 }
 
@@ -478,8 +576,11 @@ function LastTokenCard({
                             {t.address.slice(0, 4)}...{t.address.slice(-4)}
                         </span>
                     )}
-                    {isMigrated && (
-                        <Crown className='h-3.5 w-3.5 text-amber-400 shrink-0 ml-auto' />
+                    {(t.is_tracked || isMigrated) && (
+                        <span className='inline-flex items-center gap-1 ml-auto shrink-0'>
+                            {t.is_tracked && <DatabaseZap className='h-3.5 w-3.5 text-cyan-400' />}
+                            {isMigrated && <Crown className='h-3.5 w-3.5 text-amber-400' />}
+                        </span>
                     )}
                 </div>
 
@@ -508,7 +609,7 @@ function LastTokenCard({
                     <span className='inline-flex items-center gap-1 text-xs text-white/80'>
                         <HandCoins className='size-4' />
                         <span className='tabular-nums text-violet-400 font-medium'>
-                            {fmtSol((feesTerminal === 'axiom' ? t.axiom_fee : t.total_fee) ?? 0)} SOL
+                            {fmtSol((feesTerminal === 'axiom' ? t.fees.axiom : t.fees.gmgn) ?? 0)} SOL
                         </span>
                     </span>
 
@@ -554,8 +655,8 @@ export function TokenRow({
     }), [metadata?.website, metadata?.telegram])
 
     // creator label for community hover card badge
-    const creatorLabelData = metadata?.xcommunity?.creator
-        ? creatorLabels[metadata.xcommunity.creator.id]
+    const creatorLabelData = metadata?.xcommunity?.creator?.username
+        ? creatorLabels[metadata.xcommunity.creator.username.toLowerCase()]
         : undefined
 
     const protocol   = token.protocol
@@ -693,15 +794,11 @@ export function TokenRow({
             <Separator className='opacity-50' />
 
             <div className='flex items-center gap-3 text-xs flex-wrap'>
-                <span className='inline-flex items-center gap-1 text-muted text-xs font-medium uppercase tracking-wide'>
-                    <ChefHat className='h-3.5 w-3.5' />
-                    {isBlacklisted(dev.address)
-                        ? <span className='text-rose-400 uppercase'>Banned</span>
-                        : devLabel
-                            ? <span className='text-sky-300 uppercase'>{devLabel}</span>
-                            : 'DEV'
-                    }
-                </span>
+                <FundingCard
+                    dev={dev}
+                    isBlacklisted={isBlacklisted(dev.address)}
+                    devLabel={devLabel}
+                />
 
                 <span className='inline-flex items-center gap-1' title='Total tokens created'>
                     <Coins className='h-3.5 w-3.5 text-muted' />
@@ -722,15 +819,6 @@ export function TokenRow({
                     </span>
                     <span className='text-muted font-mono'>rate</span>
                 </span>
-
-                {dev.tokens.avg_ath_mcap > 0 && (
-                    <span className='inline-flex items-center gap-1' title='Avg ATH Market Cap'>
-                        <Zap className='h-3.5 w-3.5 text-muted' />
-                        <span className='tabular-nums text-amber-300 font-medium'>
-                            {fmtUsdCap(dev.tokens.avg_ath_mcap)}
-                        </span>
-                    </span>
-                )}
 
                 <span className='ml-auto inline-flex items-center gap-1.5'>
                     <button

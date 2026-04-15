@@ -17,7 +17,7 @@ import toast from 'react-hot-toast'
 
 // ─── FAQ content ──────────────────────────────────────────────────────────────
 
-const WALLET_ADDRESS = 'BMi2W2cLPR4HycBsXgpbMuMcr5PYKseRbJ8wMJyeAdXM'
+const WALLET_ADDRESS = 'EKhNteeu1tmx2vUZc9iuZ4Lz8Tqmja4njW7MVsmVGusn'
 
 function FAQContent() {
     const [copied, setCopied] = React.useState(false)

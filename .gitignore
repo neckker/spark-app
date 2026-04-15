@@ -144,3 +144,7 @@ dist
 
 # signing keys
 ~/.tauri/
+
+# agents skills
+.agents/
+skills-lock.json
