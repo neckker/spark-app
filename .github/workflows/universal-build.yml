@@ -247,21 +247,25 @@ jobs:
       - name: Publish release to public repo
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
         run: |
           set -euo pipefail
-
-          TAG="${{ github.event.release.tag_name }}"
 
           # Delete existing release in public repo if re-running
           gh release delete "$TAG" \
             --repo "${{ env.PUBLIC_REPO }}" \
             --yes --cleanup-tag 2>/dev/null || true
 
-          # Create release with all artifacts at once
+          # Create release with all artifacts at once.
+          # NOTE: RELEASE_BODY / TAG are passed via env vars, not via direct
+          # expression interpolation, so quotes / parens / backticks in the
+          # release body can't break out of the shell command or trigger
+          # glob expansion.
           gh release create "$TAG" artifacts/* \
             --repo "${{ env.PUBLIC_REPO }}" \
-            --title "Spark ${TAG}" \
-            --notes "${{ github.event.release.body }}"
+            --title "Spark $TAG" \
+            --notes "$RELEASE_BODY"
 
           echo "✅ Published to ${{ env.PUBLIC_REPO }}"
 

@@ -7,6 +7,12 @@ import { cn } from '@/lib/utils'
 
 type Phase = 'checking' | 'ready' | 'downloading' | 'installing' | 'error'
 
+// Верхняя граница на первичный опрос апдейтера. Плагин обращается к GitHub
+// за манифестом; при недоступной сети / медленном DNS / ратлимите запрос
+// может висеть минутами и держит юзера на спиннере. Если не уложились —
+// считаем, что апдейта нет, и пропускаем вниз к license gate.
+const CHECK_TIMEOUT_MS = 10_000
+
 export default function UpdateGate({ children }: { children: React.ReactNode }) {
     const [progress, setProgress] = useState<number | null>(null)
     const [version, setVersion] = useState('')
@@ -16,7 +22,15 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         async function runUpdate() {
             try {
                 console.log('[Updater] checking for updates...')
-                const update = await check()
+                const update = await Promise.race([
+                    check(),
+                    new Promise<null>((_, reject) =>
+                        setTimeout(
+                            () => reject(new Error('update check timeout')),
+                            CHECK_TIMEOUT_MS,
+                        ),
+                    ),
+                ])
 
                 if (!update) {
                     console.log('[Updater] no update available (current version is latest)')

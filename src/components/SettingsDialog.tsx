@@ -22,7 +22,6 @@ import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import {
     useSettings,
-    DEFAULT_SETTINGS,
     type Terminal,
     type FeesTerminal,
     type OpenMode,
@@ -52,7 +51,6 @@ import {
     Zap,
     Download,
     Upload,
-    ClipboardCopy,
 } from 'lucide-react'
 
 import pumpIcon   from '@/assets/pump.svg'
@@ -1029,73 +1027,6 @@ function buildExportConfig(
     }
 }
 
-function buildReferenceConfig() {
-    const defaults = DEFAULT_SETTINGS
-    return {
-        app: {
-            openInBrowser: defaults.openInBrowser,
-            openMode: defaults.openMode,
-            terminal: defaults.terminal,
-            uiScale: defaults.uiScale,
-            soundEnabled: defaults.soundEnabled,
-            soundVolume: defaults.soundVolume,
-        },
-        filters: {
-            devHold: {
-                devMin: defaults.devMin,
-                devMax: defaults.devMax,
-                devHoldEnabled: defaults.devHoldEnabled,
-            },
-            migration: {
-                migrationPct: defaults.migrationPct,
-                migrationEnabled: defaults.migrationEnabled,
-                lastTokenMigrated: defaults.lastTokenMigrated,
-            },
-            protocols: {
-                showPump: defaults.showPump,
-                showMayhem: defaults.showMayhem,
-                showBonk: defaults.showBonk,
-            },
-            fees: {
-                feesFilterEnabled: defaults.feesFilterEnabled,
-                feesFilterMode: defaults.feesFilterMode,
-                feesFilterValue: defaults.feesFilterValue,
-                feesTerminal: defaults.feesTerminal,
-            },
-            funding: {
-                fundingEnabled: defaults.fundingEnabled,
-                minFundingAmount: defaults.minFundingAmount,
-                maxFundingAmount: defaults.maxFundingAmount,
-                maxFundingAge: defaults.maxFundingAge,
-            },
-            community: {
-                communityEnabled: defaults.communityEnabled,
-                onlyCommunity: defaults.onlyCommunity,
-                minCommunityMembers: defaults.minCommunityMembers,
-                maxCommunityMembers: defaults.maxCommunityMembers,
-                minCreatorFollowers: defaults.minCreatorFollowers,
-                maxCreatorFollowers: defaults.maxCreatorFollowers,
-                maxCommunityAge: defaults.maxCommunityAge,
-                maxCreatorAge: defaults.maxCreatorAge,
-            },
-        },
-        labels: {
-            wallets: { '7xKXp9m...9mPq': 'whale', '3nFtk2L...kL2v': 'team' },
-            creators: {
-                alpha_caller: { label: 'Alpha', color: '#7dd3fc', screenName: 'alpha_caller' },
-            },
-        },
-        blacklist: {
-            wallets: ['5bAdxY9...xY9z'],
-            creators: { scammer_dev: 'Scammer' },
-        },
-        whitelist: {
-            wallets: ['9kMnPq2...Pq2r'],
-            creators: { trusted_dev: 'Trusted' },
-        },
-    }
-}
-
 type ConfigJson = ReturnType<typeof buildExportConfig>
 
 function applyImportConfig(
@@ -1256,34 +1187,6 @@ function ConfigView({ settings, store }: {
         toast.success('Config copied')
     }
 
-    const handleCopyReference = async () => {
-        const ref = buildReferenceConfig()
-        const prompt = `You are helping the user configure their Spark desktop app. Below is the reference config with all available keys, default values, and example data for lists.
-
-The user will paste their current config - compare it against the reference, ask what they want to change, and output the updated JSON ready to import back into the app.
-
-## Reference config (all keys + defaults)
-
-\`\`\`json
-${JSON.stringify(ref, null, 2)}
-\`\`\`
-
-## User's current config
-
-\`\`\`json
-<PASTE YOUR CONFIG HERE>
-\`\`\`
-
-Instructions:
-- Only modify values the user explicitly asks to change
-- Preserve all existing labels, blacklist, and whitelist entries unless told otherwise
-- Output the full updated config as a single JSON code block
-- Keep the same categorized structure (app, filters, labels, blacklist, whitelist)`
-
-        await navigator.clipboard.writeText(prompt)
-        toast.success('AI prompt copied to clipboard')
-    }
-
     return (
         <div className='space-y-4 px-1 py-2'>
             <SectionLabel>Export</SectionLabel>
@@ -1315,26 +1218,6 @@ Instructions:
                 <Button className='w-full' onClick={handleImport}>
                     <Upload className='h-4 w-4' />
                     Import Config
-                </Button>
-            </div>
-
-            <SectionLabel>AI Assistant</SectionLabel>
-
-            <div className='rounded-lg bg-white/3 ring-1 ring-white/8 px-3 py-3 space-y-3'>
-                <div>
-                    <div className='text-sm font-medium text-white'>AI Config Editor</div>
-                    <div className='text-xs text-muted mt-0.5'>Edit your config with help of any AI model</div>
-                </div>
-                <div className='flex items-start gap-2 rounded-md px-2.5 py-1.5 bg-violet-500/8 ring-1 ring-violet-500/20'>
-                    <Info className='h-3.5 w-3.5 text-violet-400 shrink-0 mt-0.5' />
-                    <p className='text-[11px] text-violet-200/70'>
-                        Copies a ready-made prompt with a <span className='font-semibold text-white'>reference config</span> and a placeholder for your current settings.
-                        Paste it into any AI chat, add your config via <span className='font-semibold text-white'>Copy JSON</span> above, describe desired changes - and import the result back.
-                    </p>
-                </div>
-                <Button className='w-full' onClick={handleCopyReference}>
-                    <ClipboardCopy className='h-4 w-4' />
-                    Copy AI Prompt
                 </Button>
             </div>
         </div>

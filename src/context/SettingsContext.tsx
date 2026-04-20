@@ -82,9 +82,6 @@ export const DEFAULT_SETTINGS: Settings = {
 
 // ─── store structure ─────────────────────────────────────────────────────────
 
-/** Top-level store keys after restructuring */
-export const VALID_STORE_KEYS = new Set(['app', 'filters', 'labels', 'blacklist', 'whitelist'])
-
 type StoreApp = {
     openInBrowser: boolean
     openMode: OpenMode
@@ -250,112 +247,28 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         async function load() {
-            // Try new categorized structure first
+            // Читаем только актуальную категоризированную структуру.
+            // Любые посторонние ключи (включая реликты старой плоской схемы)
+            // игнорируются — на работу это не влияет, а лишней логики меньше.
             const storedApp     = await store.get<StoreApp>('app')
             const storedFilters = await store.get<StoreFilters>('filters')
             const storedLabels  = await store.get<StoreLabels>('labels')
             const storedBL      = await store.get<StoreBlacklist>('blacklist')
             const storedWL      = await store.get<StoreWhitelist>('whitelist')
 
-            const isNewFormat = storedApp != null || storedFilters != null
-
-            let resolved: Settings
-            let wLabels: WalletLabels = {}
-            let cLabels: CreatorLabels = {}
-            let blWallets: string[] = []
-            let blCreators: CreatorBlacklist = {}
-            let wlWallets: string[] = []
-            let wlCreators: CreatorBlacklist = {}
-
-            if (isNewFormat) {
-                // ── load from categorized structure ──
-                resolved = {
-                    ...DEFAULT_SETTINGS,
-                    ...(storedApp ? appToSettings(storedApp) : {}),
-                    ...(storedFilters ? filtersToSettings(storedFilters) : {}),
-                }
-                wLabels    = storedLabels?.wallets ?? {}
-                cLabels    = storedLabels?.creators ?? {}
-                blWallets  = storedBL?.wallets ?? []
-                blCreators = storedBL?.creators ?? {}
-                wlWallets  = storedWL?.wallets ?? []
-                wlCreators = storedWL?.creators ?? {}
-            } else {
-                // ── migrate from old flat structure ──
-                const g = <T,>(k: string, d: T) => store.get<T>(k).then(v => v ?? d)
-
-                resolved = {
-                    devMin:             await g('devMin',             DEFAULT_SETTINGS.devMin),
-                    devMax:             await g('devMax',             DEFAULT_SETTINGS.devMax),
-                    devHoldEnabled:     await g('devHoldEnabled',     DEFAULT_SETTINGS.devHoldEnabled),
-                    migrationPct:       await g('migrationPct',       DEFAULT_SETTINGS.migrationPct),
-                    migrationEnabled:   await g('migrationEnabled',   DEFAULT_SETTINGS.migrationEnabled),
-                    lastTokenMigrated:  await g('lastTokenMigrated',  DEFAULT_SETTINGS.lastTokenMigrated),
-                    openInBrowser:      await g('openInBrowser',      DEFAULT_SETTINGS.openInBrowser),
-                    openMode:           await g('openMode',           DEFAULT_SETTINGS.openMode),
-                    terminal:           await g('terminal',           DEFAULT_SETTINGS.terminal),
-                    uiScale:            await g('uiScale',            DEFAULT_SETTINGS.uiScale),
-                    showPump:           await g('showPump',           DEFAULT_SETTINGS.showPump),
-                    showMayhem:         await g('showMayhem',         DEFAULT_SETTINGS.showMayhem),
-                    showBonk:           await g('showBonk',           DEFAULT_SETTINGS.showBonk),
-                    feesFilterEnabled:  await g('feesFilterEnabled',  DEFAULT_SETTINGS.feesFilterEnabled),
-                    feesFilterMode:     await g('feesFilterMode',     DEFAULT_SETTINGS.feesFilterMode),
-                    feesFilterValue:    await g('feesFilterValue',    DEFAULT_SETTINGS.feesFilterValue),
-                    feesTerminal:       await g('feesTerminal',       DEFAULT_SETTINGS.feesTerminal),
-                    fundingEnabled:     await g('fundingEnabled',     DEFAULT_SETTINGS.fundingEnabled),
-                    minFundingAmount:   await g('minFundingAmount',   DEFAULT_SETTINGS.minFundingAmount),
-                    maxFundingAmount:   await g('maxFundingAmount',   DEFAULT_SETTINGS.maxFundingAmount),
-                    maxFundingAge:      await g('maxFundingAge',      DEFAULT_SETTINGS.maxFundingAge),
-                    soundEnabled:       await g('soundEnabled',       DEFAULT_SETTINGS.soundEnabled),
-                    soundVolume:        await g('soundVolume',        DEFAULT_SETTINGS.soundVolume),
-                    communityEnabled:   await g('communityEnabled',   DEFAULT_SETTINGS.communityEnabled),
-                    onlyCommunity:      await g('onlyCommunity',      DEFAULT_SETTINGS.onlyCommunity),
-                    minCommunityMembers: await g('minCommunityMembers', DEFAULT_SETTINGS.minCommunityMembers),
-                    maxCommunityMembers: await g('maxCommunityMembers', DEFAULT_SETTINGS.maxCommunityMembers),
-                    minCreatorFollowers: await g('minCreatorFollowers', DEFAULT_SETTINGS.minCreatorFollowers),
-                    maxCreatorFollowers: await g('maxCreatorFollowers', DEFAULT_SETTINGS.maxCreatorFollowers),
-                    maxCommunityAge:    await g('maxCommunityAge',    DEFAULT_SETTINGS.maxCommunityAge),
-                    maxCreatorAge:      await g('maxCreatorAge',      DEFAULT_SETTINGS.maxCreatorAge),
-                }
-
-                wLabels    = (await store.get<WalletLabels>('walletLabels')) ?? {}
-                const rawCL = (await store.get<Record<string, unknown>>('creatorLabels')) ?? {}
-                blWallets  = (await store.get<string[]>('blacklist')) ?? []
-                blCreators = (await store.get<CreatorBlacklist>('creatorBlacklist')) ?? {}
-                wlWallets  = (await store.get<string[]>('devWhitelist')) ?? []
-                wlCreators = (await store.get<CreatorBlacklist>('creatorWhitelist')) ?? {}
-
-                // Migrate old string-format creator labels to new object format
-                for (const [id, value] of Object.entries(rawCL)) {
-                    if (typeof value === 'string') {
-                        cLabels[id] = { label: value, color: '#7dd3fc', screenName: '' }
-                    } else if (value && typeof value === 'object') {
-                        cLabels[id] = value as CreatorLabelData
-                    }
-                }
-
-                // Write new categorized structure
-                await store.set('app', settingsToApp(resolved))
-                await store.set('filters', settingsToFilters(resolved))
-                await store.set('labels', { wallets: wLabels, creators: cLabels })
-                await store.set('blacklist', { wallets: blWallets, creators: blCreators })
-                await store.set('whitelist', { wallets: wlWallets, creators: wlCreators })
-
-                // Remove all old flat keys
-                const allKeys = await store.keys()
-                for (const k of allKeys) {
-                    if (!VALID_STORE_KEYS.has(k)) await store.delete(k)
-                }
-                await store.save()
+            const resolved: Settings = {
+                ...DEFAULT_SETTINGS,
+                ...(storedApp ? appToSettings(storedApp) : {}),
+                ...(storedFilters ? filtersToSettings(storedFilters) : {}),
             }
 
             setSettings(resolved)
-            setWalletLabels(wLabels)
-            setCreatorLabels(cLabels)
-            setBlacklist(new Set(blWallets))
-            setCreatorBlacklist(blCreators)
-            setDevWhitelist(new Set(wlWallets))
-            setCreatorWhitelist(wlCreators)
+            setWalletLabels(storedLabels?.wallets ?? {})
+            setCreatorLabels(storedLabels?.creators ?? {})
+            setBlacklist(new Set(storedBL?.wallets ?? []))
+            setCreatorBlacklist(storedBL?.creators ?? {})
+            setDevWhitelist(new Set(storedWL?.wallets ?? []))
+            setCreatorWhitelist(storedWL?.creators ?? {})
             setReady(true)
         }
         load().catch(() => setReady(true))
