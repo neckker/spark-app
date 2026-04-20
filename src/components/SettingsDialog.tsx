@@ -1418,7 +1418,7 @@ function AccessCard() {
                 )}
             </div>
             <a
-                href='https://t.me/solythbot'
+                href='https://discord.gg/kzpyEHUdpj'
                 target='_blank'
                 rel='noreferrer'
                 className={cn(

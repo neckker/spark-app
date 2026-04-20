@@ -141,15 +141,23 @@ function FAQContent() {
                     Support & Contact
                 </AccordionTrigger>
                 <AccordionContent className='text-xs text-muted pb-3'>
-                    For license purchases, renewals, or technical support,
-                    contact us on Telegram:{' '}
+                    For license purchases, renewals, or technical support,{' '}
                     <a
-                        href='https://t.me/solythbot'
+                        href='https://discord.gg/kzpyEHUdpj'
                         target='_blank'
                         rel='noreferrer'
                         className='text-sky-400 hover:text-sky-300 transition-colors'
                     >
-                        @solythbot
+                        join our Discord
+                    </a>
+                    . You can also follow the author's{' '}
+                    <a
+                        href='https://t.me/neckkero'
+                        target='_blank'
+                        rel='noreferrer'
+                        className='text-sky-400 hover:text-sky-300 transition-colors'
+                    >
+                        Telegram channel
                     </a>
                     . Response times may vary.
                 </AccordionContent>

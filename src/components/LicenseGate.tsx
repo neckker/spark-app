@@ -306,7 +306,7 @@ function PurchaseBlock() {
                     <p className='text-xs text-muted mt-0.5'>Get instant access to Spark</p>
                 </div>
                 <a
-                    href='https://t.me/solythbot'
+                    href='https://discord.gg/kzpyEHUdpj'
                     target='_blank'
                     rel='noreferrer'
                     className='shrink-0 inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium bg-white/5 ring-1 ring-white/10 text-white hover:bg-white/8 hover:ring-white/15 transition-colors'

@@ -32,7 +32,7 @@ interface AuthCtx extends AuthState {
 
 // --- helpers ---
 
-const VALIDATE_INTERVAL_MS = 6 * 60 * 60 * 1000  // 6 часов
+const VALIDATE_INTERVAL_MS = 60 * 60 * 1000  // 1 час
 
 const store = new LazyStore('auth.json')
 

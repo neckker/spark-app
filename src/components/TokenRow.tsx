@@ -381,10 +381,12 @@ function CreatorRow({ community }: { community: XCommunity }) {
 function FundingCard({
     dev,
     isBlacklisted,
+    isWhitelisted,
     devLabel,
 }: {
     dev: DevInfo
     isBlacklisted: boolean
+    isWhitelisted: boolean
     devLabel: string | undefined
 }) {
     const funding = dev.funding
@@ -394,16 +396,23 @@ function FundingCard({
         toast.success('Copied to clipboard')
     }
 
+    const LeadIcon = isWhitelisted && !isBlacklisted ? BadgeCheck : ChefHat
+    const leadIconCls = isWhitelisted && !isBlacklisted
+        ? 'h-3.5 w-3.5 text-emerald-400'
+        : 'h-3.5 w-3.5'
+
     return (
         <HoverCard openDelay={10} closeDelay={100}>
             <HoverCardTrigger asChild>
                 <span className='inline-flex items-center gap-1 text-muted text-xs font-medium uppercase tracking-wide cursor-pointer'>
-                    <ChefHat className='h-3.5 w-3.5' />
+                    <LeadIcon className={leadIconCls} />
                     {isBlacklisted
                         ? <span className='text-rose-400 uppercase'>Banned</span>
-                        : devLabel
-                            ? <span className='text-sky-300 uppercase'>{devLabel}</span>
-                            : 'DEV'
+                        : isWhitelisted
+                            ? <span className='text-emerald-400 uppercase'>Trusted</span>
+                            : devLabel
+                                ? <span className='text-sky-300 uppercase'>{devLabel}</span>
+                                : 'DEV'
                     }
                 </span>
             </HoverCardTrigger>
@@ -417,7 +426,10 @@ function FundingCard({
                         {/* wallets */}
                         <div className='space-y-1'>
                             <div className='flex items-center justify-between'>
-                                <span className='text-[11px] text-muted'>Dev</span>
+                                {devLabel
+                                    ? <span className='text-[11px] text-sky-300 uppercase tracking-wide truncate max-w-[60%]' title={devLabel}>{devLabel}</span>
+                                    : <span className='text-[11px] text-muted'>Dev</span>
+                                }
                                 <span
                                     onClick={() => copyAddr(dev.address)}
                                     className='text-[11px] text-muted font-mono cursor-pointer hover:text-white transition-colors'
@@ -634,7 +646,7 @@ export function TokenRow({
 }) {
     const { token, dev, lastTokens } = item
     const metadata = token.metadata
-    const { settings, walletLabels, creatorLabels, addToBlacklist, isBlacklisted } = useSettings()
+    const { settings, walletLabels, creatorLabels, addToBlacklist, isBlacklisted, addToDevWhitelist, isDevWhitelisted } = useSettings()
     const termMeta = TERMINAL_META[settings.terminal]
 
     const [labelModalOpen, setLabelModalOpen] = useState(false)
@@ -681,6 +693,15 @@ export function TokenRow({
         }
         await addToBlacklist(dev.address)
         toast.success('Dev wallet blacklisted')
+    }
+
+    const onWhitelist = async () => {
+        if (isDevWhitelisted(dev.address)) {
+            toast.error('Already whitelisted')
+            return
+        }
+        await addToDevWhitelist(dev.address)
+        toast.success('Dev wallet whitelisted')
     }
 
     const iconLinkCls = 'hover:text-zinc-200 transition-colors'
@@ -797,6 +818,7 @@ export function TokenRow({
                 <FundingCard
                     dev={dev}
                     isBlacklisted={isBlacklisted(dev.address)}
+                    isWhitelisted={isDevWhitelisted(dev.address)}
                     devLabel={devLabel}
                 />
 
@@ -828,6 +850,14 @@ export function TokenRow({
                         className='inline-flex items-center gap-0.5 text-sky-400 hover:text-sky-300 transition-colors'
                     >
                         <Tag className='h-3.5 w-3.5' />
+                    </button>
+                    <button
+                        type='button'
+                        title='Whitelist this dev wallet'
+                        onClick={() => void onWhitelist()}
+                        className='inline-flex items-center gap-0.5 text-emerald-400 hover:text-emerald-300 transition-colors'
+                    >
+                        <BadgeCheck className='h-3.5 w-3.5' />
                     </button>
                     <button
                         type='button'
