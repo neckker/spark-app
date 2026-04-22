@@ -53,6 +53,7 @@ export type TokenEvent = {
     market_cap: number
     metadata: Metadata | null
     is_mayhem_mode: boolean
+    is_community_duplicate: boolean
 }
 
 export type DevTokenStats = {
@@ -301,6 +302,7 @@ export function useSparkTokens() {
         feesTerminal: settings.feesTerminal,
         communityEnabled: settings.communityEnabled,
         onlyCommunity: settings.onlyCommunity,
+        hideDuplicateCommunity: settings.hideDuplicateCommunity,
         minCommunityMembers: settings.minCommunityMembers,
         maxCommunityMembers: settings.maxCommunityMembers,
         minCreatorFollowers: settings.minCreatorFollowers,
@@ -334,14 +336,15 @@ export function useSparkTokens() {
             migrationEnabled: settings.migrationEnabled,
             lastTokenMigrated: settings.lastTokenMigrated,
             showPump: settings.showPump,
-        showMayhem: settings.showMayhem,
-        showBonk: settings.showBonk,
+            showMayhem: settings.showMayhem,
+            showBonk: settings.showBonk,
             feesFilterEnabled: settings.feesFilterEnabled,
             feesFilterMode: settings.feesFilterMode,
             feesFilterValue: settings.feesFilterValue,
             feesTerminal: settings.feesTerminal,
             communityEnabled: settings.communityEnabled,
             onlyCommunity: settings.onlyCommunity,
+            hideDuplicateCommunity: settings.hideDuplicateCommunity,
             minCommunityMembers: settings.minCommunityMembers,
             maxCommunityMembers: settings.maxCommunityMembers,
             minCreatorFollowers: settings.minCreatorFollowers,
@@ -369,6 +372,7 @@ export function useSparkTokens() {
         settings.feesTerminal,
         settings.communityEnabled,
         settings.onlyCommunity,
+        settings.hideDuplicateCommunity,
         settings.minCommunityMembers,
         settings.maxCommunityMembers,
         settings.minCreatorFollowers,
@@ -509,6 +513,7 @@ export function useSparkTokens() {
                     feesTerminal,
                     communityEnabled,
                     onlyCommunity,
+                    hideDuplicateCommunity,
                     minCommunityMembers,
                     maxCommunityMembers,
                     minCreatorFollowers,
@@ -553,6 +558,9 @@ export function useSparkTokens() {
 
                 // only-community mode: drop tokens without X community attached
                 if (onlyCommunity && !metadata?.xcommunity) return
+
+                // drop tokens whose X community was already seen server-side
+                if (hideDuplicateCommunity && newpair.is_community_duplicate) return
 
                 // community / creator filters (only apply when community is attached)
                 if (metadata?.xcommunity) {
@@ -606,6 +614,7 @@ export function useSparkTokens() {
                 protocol: newpair.protocol,
                 market_cap: newpair.market_cap,
                 is_mayhem_mode: newpair.is_mayhem_mode,
+                is_community_duplicate: newpair.is_community_duplicate === true,
                 metadata,
             }
 

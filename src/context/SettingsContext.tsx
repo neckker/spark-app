@@ -38,6 +38,7 @@ export interface Settings {
     // community filters
     communityEnabled: boolean
     onlyCommunity: boolean
+    hideDuplicateCommunity: boolean
     minCommunityMembers: number
     maxCommunityMembers: number
     minCreatorFollowers: number
@@ -72,6 +73,7 @@ export const DEFAULT_SETTINGS: Settings = {
     soundVolume: 70,
     communityEnabled: false,
     onlyCommunity: false,
+    hideDuplicateCommunity: true,
     minCommunityMembers: 0,
     maxCommunityMembers: 0,
     minCreatorFollowers: 0,
@@ -97,7 +99,7 @@ type StoreFilters = {
     protocols: { showPump: boolean; showMayhem: boolean; showBonk: boolean }
     fees: { feesFilterEnabled: boolean; feesFilterMode: FeesFilterMode; feesFilterValue: number; feesTerminal: FeesTerminal }
     funding: { fundingEnabled: boolean; minFundingAmount: number; maxFundingAmount: number; maxFundingAge: number }
-    community: { communityEnabled: boolean; onlyCommunity: boolean; minCommunityMembers: number; maxCommunityMembers: number; minCreatorFollowers: number; maxCreatorFollowers: number; maxCommunityAge: number; maxCreatorAge: number }
+    community: { communityEnabled: boolean; onlyCommunity: boolean; hideDuplicateCommunity: boolean; minCommunityMembers: number; maxCommunityMembers: number; minCreatorFollowers: number; maxCreatorFollowers: number; maxCommunityAge: number; maxCreatorAge: number }
 }
 
 export type StoreLabels = {
@@ -148,7 +150,7 @@ function settingsToFilters(s: Settings): StoreFilters {
         protocols: { showPump: s.showPump, showMayhem: s.showMayhem, showBonk: s.showBonk },
         fees: { feesFilterEnabled: s.feesFilterEnabled, feesFilterMode: s.feesFilterMode, feesFilterValue: s.feesFilterValue, feesTerminal: s.feesTerminal },
         funding: { fundingEnabled: s.fundingEnabled, minFundingAmount: s.minFundingAmount, maxFundingAmount: s.maxFundingAmount, maxFundingAge: s.maxFundingAge },
-        community: { communityEnabled: s.communityEnabled, onlyCommunity: s.onlyCommunity, minCommunityMembers: s.minCommunityMembers, maxCommunityMembers: s.maxCommunityMembers, minCreatorFollowers: s.minCreatorFollowers, maxCreatorFollowers: s.maxCreatorFollowers, maxCommunityAge: s.maxCommunityAge, maxCreatorAge: s.maxCreatorAge },
+        community: { communityEnabled: s.communityEnabled, onlyCommunity: s.onlyCommunity, hideDuplicateCommunity: s.hideDuplicateCommunity, minCommunityMembers: s.minCommunityMembers, maxCommunityMembers: s.maxCommunityMembers, minCreatorFollowers: s.minCreatorFollowers, maxCreatorFollowers: s.maxCreatorFollowers, maxCommunityAge: s.maxCommunityAge, maxCreatorAge: s.maxCreatorAge },
     }
 }
 

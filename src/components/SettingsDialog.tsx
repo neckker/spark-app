@@ -417,6 +417,7 @@ function MainTab({ settings, store }: {
     const [maxFundingAge,        setMaxFundingAge]        = React.useState(String(settings.maxFundingAge))
     const [communityEnabled,     setCommunityEnabled]     = React.useState(settings.communityEnabled)
     const [onlyCommunity,        setOnlyCommunity]        = React.useState(settings.onlyCommunity)
+    const [hideDuplicateCommunity, setHideDuplicateCommunity] = React.useState(settings.hideDuplicateCommunity)
     const [minCommunityMembers,  setMinCommunityMembers]  = React.useState(String(settings.minCommunityMembers))
     const [maxCommunityMembers,  setMaxCommunityMembers]  = React.useState(String(settings.maxCommunityMembers))
     const [minCreatorFollowers,  setMinCreatorFollowers]  = React.useState(String(settings.minCreatorFollowers))
@@ -461,6 +462,7 @@ function MainTab({ settings, store }: {
         setMaxFundingAge(String(settings.maxFundingAge))
         setCommunityEnabled(settings.communityEnabled)
         setOnlyCommunity(settings.onlyCommunity)
+        setHideDuplicateCommunity(settings.hideDuplicateCommunity)
         setMinCommunityMembers(String(settings.minCommunityMembers))
         setMaxCommunityMembers(String(settings.maxCommunityMembers))
         setMinCreatorFollowers(String(settings.minCreatorFollowers))
@@ -549,6 +551,7 @@ function MainTab({ settings, store }: {
                 maxFundingAge:       fundAge.ok ? fundAge.value : 0,
                 communityEnabled,
                 onlyCommunity,
+                hideDuplicateCommunity,
                 minCommunityMembers: comMin.ok  ? comMin.value  : 0,
                 maxCommunityMembers: comMax.ok  ? comMax.value  : 0,
                 minCreatorFollowers: creatMin.ok ? creatMin.value : 0,
@@ -587,7 +590,7 @@ function MainTab({ settings, store }: {
             return
         }
         autoSave()
-    }, [devMin, devMax, devHoldEnabled, migration, migrationEnabled, lastTokenMigrated, showPump, showMayhem, showBonk, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge, communityEnabled, onlyCommunity, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCreatorFollowers, maxCommunityAge, maxCreatorAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
+    }, [devMin, devMax, devHoldEnabled, migration, migrationEnabled, lastTokenMigrated, showPump, showMayhem, showBonk, feesFilterEnabled, feesFilterMode, feesFilterValue, feesTerminal, fundingEnabled, minFundingAmount, maxFundingAmount, maxFundingAge, communityEnabled, onlyCommunity, hideDuplicateCommunity, minCommunityMembers, maxCommunityMembers, minCreatorFollowers, maxCreatorFollowers, maxCommunityAge, maxCreatorAge, openInBrowser, openMode, terminal, uiScale, soundEnabled, soundVolume])
 
     return (
         <div className='space-y-4'>
@@ -787,6 +790,13 @@ function MainTab({ settings, store }: {
                             description='Show only tokens with an attached X community'
                             checked={onlyCommunity}
                             onCheckedChange={setOnlyCommunity}
+                        />
+                        <Separator className='opacity-80' />
+                        <RowSwitch
+                            label='Hide Duplicate Communities'
+                            description='Skip tokens whose X community has already been seen'
+                            checked={hideDuplicateCommunity}
+                            onCheckedChange={setHideDuplicateCommunity}
                         />
                         <Separator className='opacity-80' />
                         <RowSwitch
@@ -1004,6 +1014,7 @@ function buildExportConfig(
             community: {
                 communityEnabled: settings.communityEnabled,
                 onlyCommunity: settings.onlyCommunity,
+                hideDuplicateCommunity: settings.hideDuplicateCommunity,
                 minCommunityMembers: settings.minCommunityMembers,
                 maxCommunityMembers: settings.maxCommunityMembers,
                 minCreatorFollowers: settings.minCreatorFollowers,
@@ -1077,6 +1088,7 @@ function applyImportConfig(
         if (f.community) {
             if (typeof f.community.communityEnabled === 'boolean') flat.communityEnabled = f.community.communityEnabled
             if (typeof f.community.onlyCommunity === 'boolean') flat.onlyCommunity = f.community.onlyCommunity
+            if (typeof f.community.hideDuplicateCommunity === 'boolean') flat.hideDuplicateCommunity = f.community.hideDuplicateCommunity
             if (typeof f.community.minCommunityMembers === 'number') flat.minCommunityMembers = f.community.minCommunityMembers
             if (typeof f.community.maxCommunityMembers === 'number') flat.maxCommunityMembers = f.community.maxCommunityMembers
             if (typeof f.community.minCreatorFollowers === 'number') flat.minCreatorFollowers = f.community.minCreatorFollowers

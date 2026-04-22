@@ -35,6 +35,7 @@ import {
     Tag, Ban, Clock, Crown, Zap, DatabaseZap,
     Feather, User, Users,
     Pencil, BadgeCheck, Check, X,
+    History,
 } from 'lucide-react'
 
 import type { TokenCardModel, LastToken, Metadata, XCommunity, DevInfo } from '@/hooks/useSparkTokens'
@@ -775,6 +776,17 @@ export function TokenRow({
                         ) : metadata ? (
                             <XEntityIcon metadata={metadata} />
                         ) : null}
+
+                        {/* duplicate-community indicator — token shares X community with a previously-seen one */}
+                        {!token.is_community_duplicate && metadata?.xtype?.[0] === 'community' && (
+                            <span
+                                className='inline-flex items-center gap-1 rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-300'
+                                title='Duplicate Community Detected'
+                            >
+                                <History className='h-3 w-3' />
+                                Reused
+                            </span>
+                        )}
 
                         {links.website && (
                             <a href={links.website} target='_blank' rel='noreferrer'
