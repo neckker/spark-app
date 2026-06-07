@@ -1,0 +1,248 @@
+name: Build & Publish Spark App
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  # --- macos universal (aarch64 + x86_64) ---
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Import Apple Developer Certificate
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          printf "%s" "$APPLE_CERTIFICATE" | base64 -D > certificate.p12
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+
+          security import certificate.p12 -k build.keychain \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+          CERT_ID=$(security find-identity -v -p codesigning build.keychain \
+            | grep "Developer ID Application" | head -n 1 | awk -F'"' '{print $2}')
+
+          if [ -z "$CERT_ID" ]; then
+            echo "❌ Developer ID Application identity not found"
+            exit 1
+          fi
+
+          # write the identity to GITHUB_ENV (not logged); never echo its
+          # value - it carries the developer's real name + team id
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+          echo "✅ Signing identity configured"
+
+      - name: Build Tauri app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bun run tauri build --target universal-apple-darwin
+
+      - name: Verify macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/spark.app"
+          echo "🔎 codesign verify"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "✅ Gatekeeper assessment"
+          # drop the `origin=` line - it prints the signing identity (real name)
+          spctl -a -vv "$APP" 2>&1 | grep -v 'Developer ID Application'
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle"
+          mkdir -p artifacts
+
+          # Updater artifact - rename to match tauri-action convention
+          cp "$BUNDLE/macos/spark.app.tar.gz"     "artifacts/spark_universal.app.tar.gz"
+          cp "$BUNDLE/macos/spark.app.tar.gz.sig" "artifacts/spark_universal.app.tar.gz.sig"
+
+          # DMG installer
+          cp "$BUNDLE"/dmg/*.dmg artifacts/
+
+          # Portable .app.zip
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$BUNDLE/macos/spark.app" \
+            "artifacts/spark_${TAG}_macos_universal.app.zip"
+
+          echo "📦 macOS artifacts:"
+          ls -lh artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: macos-artifacts
+          path: artifacts/
+          retention-days: 1
+
+  # --- windows (x86_64) ---
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bun run tauri build
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          BUNDLE="src-tauri/target/release/bundle"
+          mkdir -p artifacts
+
+          # NSIS installer + updater signature
+          cp "$BUNDLE"/nsis/*-setup.exe      artifacts/
+          cp "$BUNDLE"/nsis/*-setup.exe.sig  artifacts/
+
+          # MSI installer + updater signature
+          cp "$BUNDLE"/msi/*.msi             artifacts/
+          cp "$BUNDLE"/msi/*.msi.sig         artifacts/
+
+          # Portable exe
+          cp src-tauri/target/release/spark.exe \
+            "artifacts/spark_${TAG}_windows_portable.exe"
+
+          echo "📦 Windows artifacts:"
+          ls -lh artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-artifacts
+          path: artifacts/
+          retention-days: 1
+
+  # --- publish: gather all artifacts → single release ---
+  publish:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: ls -lhR artifacts/
+
+      - name: Generate latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+
+          # ── macOS ──
+          MACOS_FILE="spark_universal.app.tar.gz"
+          MACOS_SIG="$(cat "artifacts/${MACOS_FILE}.sig")"
+
+          # ── Windows MSI ──
+          WIN_MSI="$(basename artifacts/*.msi)"
+          WIN_MSI_SIG="$(cat "artifacts/${WIN_MSI}.sig")"
+
+          # ── Windows NSIS ──
+          WIN_NSIS="$(basename artifacts/*-setup.exe)"
+          WIN_NSIS_SIG="$(cat "artifacts/${WIN_NSIS}.sig")"
+
+          # Build latest.json - matches tauri-action format exactly
+          jq -n \
+            --arg version    "$VERSION" \
+            --arg pub_date   "$PUB_DATE" \
+            --arg mac_sig    "$MACOS_SIG" \
+            --arg mac_url    "${BASE_URL}/${MACOS_FILE}" \
+            --arg msi_sig    "$WIN_MSI_SIG" \
+            --arg msi_url    "${BASE_URL}/${WIN_MSI}" \
+            --arg nsis_sig   "$WIN_NSIS_SIG" \
+            --arg nsis_url   "${BASE_URL}/${WIN_NSIS}" \
+            '{
+              version:  $version,
+              notes:    "",
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64":      { signature: $mac_sig,  url: $mac_url  },
+                "darwin-x86_64":       { signature: $mac_sig,  url: $mac_url  },
+                "darwin-aarch64-app":  { signature: $mac_sig,  url: $mac_url  },
+                "darwin-x86_64-app":   { signature: $mac_sig,  url: $mac_url  },
+                "windows-x86_64":      { signature: $msi_sig,  url: $msi_url  },
+                "windows-x86_64-msi":  { signature: $msi_sig,  url: $msi_url  },
+                "windows-x86_64-nsis": { signature: $nsis_sig, url: $nsis_url }
+              }
+            }' > artifacts/latest.json
+
+          echo "✅ latest.json generated:"
+          cat artifacts/latest.json
+
+      - name: Attach build to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: artifacts/*

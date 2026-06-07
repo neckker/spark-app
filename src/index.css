@@ -1,0 +1,93 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/geist';
+
+* {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+@utility scrollbar-hide {
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+@layer base {
+    html,
+    body {
+        background-color: #08090e;
+    }
+
+    body {
+        background-image:
+            radial-gradient(620px 620px at 22% -10%, rgba(88, 101, 242, 0.18), transparent 60%),
+            radial-gradient(520px 520px at 92% 28%, rgba(160, 117, 255, 0.14), transparent 62%),
+            radial-gradient(540px 540px at 35% 102%, rgba(124, 58, 237, 0.14), transparent 60%);
+        background-attachment: fixed;
+        background-repeat: no-repeat;
+    }
+
+    button:not(:disabled),
+    [role='button']:not(:disabled) {
+        cursor: pointer;
+    }
+
+    ::selection {
+        background: rgba(88, 101, 242, 0.3);
+        color: #fff;
+    }
+}
+
+@theme {
+    --breakpoint-xs: 375px;
+    --breakpoint-3xl: 1920px;
+
+    --font-sans: 'Geist Variable', system-ui, -apple-system, sans-serif;
+
+    --color-main: #171923;
+    --color-primary: #5865f2;
+    --color-panel: #1f222d;
+    --color-accent: #a075ff;
+    --color-iris: #7b8aff;
+    --color-solana: #14f195;
+    --color-line: #2e353f;
+    --color-muted: #c3c9d1;
+    --color-secondary: #2a2d38;
+    --color-lightline: #ffffff33;
+    --color-destructive: #e93a4b;
+
+    --color-deep: #08090e;
+    --color-surface: #0e1018;
+    --color-foreground: #e2e8f0;
+    --color-popover: #161821;
+    --color-field: #16161f;
+    --color-brand-x: #5dbcff;
+
+    --animate-enter: enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+    @keyframes enter {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+}
+
+.bg-grid {
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+}
